@@ -1,0 +1,3 @@
+# Placeholder config for the showcase — no real values.
+appEnv: prod
+logLevel: info

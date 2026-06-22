@@ -1,0 +1,10 @@
+# Pinned toolchain for local dev. Run `mise install` to get everything.
+[tools]
+opentofu          = "1.12.3"
+tflint            = "0.63.1"
+trivy             = "0.71.2"
+awscli            = "2.35.9"
+"pipx:pre-commit" = "4.6.0"
+
+[env]
+AWS_DEFAULT_REGION = "sa-east-1"

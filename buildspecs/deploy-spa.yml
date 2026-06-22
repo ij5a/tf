@@ -1,0 +1,71 @@
+version: 0.2
+
+env:
+  shell: bash
+  variables:
+    ENVIRONMENT: "${environment}"
+    REPOSITORY_URL: "${repository_url}"
+    REPOSITORY_NAME: "${repository_name}"
+    SERVICE_REPOSITORY: "${service_repository}"
+
+phases:
+  pre_build:
+    commands:
+      - echo "Logging in to Amazon ECR..."
+      - AWS_ACCOUNT_ID="$(aws sts get-caller-identity --query 'Account' --output text)"
+      - aws ecr get-login-password --region $${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin $${AWS_ACCOUNT_ID}.dkr.ecr.$${AWS_DEFAULT_REGION}.amazonaws.com
+      # In prod and sandbox the bare "<service>-latest" tag does not exist - the source is the
+      # env-prefixed "<env>-<service>-latest" placed by the manual promotion flow (or seed script).
+      # In non-prod the source is the bare "<service>-latest" pushed by upstream CI.
+      - |
+        if [ "$${ENVIRONMENT}" = "prod" ] || [ "$${ENVIRONMENT}" = "sandbox" ]; then
+          LATEST_TAG="$${ENVIRONMENT}-$${SERVICE_REPOSITORY}-latest"
+        else
+          LATEST_TAG="$${SERVICE_REPOSITORY}-latest"
+        fi
+      - SHA256_DIGEST="$(aws ecr list-images --repository-name $${REPOSITORY_NAME} --no-paginate --max-results 1000 --query 'imageIds[?imageTag==`"'"$${LATEST_TAG}"'"`].imageDigest' --output text)"
+      # In prod the versioned tag is also env-prefixed (e.g. prod-spa-v6.5.402-20260406-00),
+      # so the only filter we need is "not -latest". In non-prod we preserve the original behavior
+      # of filtering out anything env-prefixed to find the bare versioned tag.
+      - |
+        if [ "$${ENVIRONMENT}" = "prod" ] || [ "$${ENVIRONMENT}" = "sandbox" ]; then
+          DEPLOYMENT_TAG="$(aws ecr list-images --repository-name $${REPOSITORY_NAME} --no-paginate --max-results 1000 --query 'imageIds[?imageDigest==`"'"$${SHA256_DIGEST}"'"`] | [?!contains(imageTag, `"-latest"`)].imageTag | [0]' --output text)"
+          if [ "$${DEPLOYMENT_TAG}" = "None" ]; then DEPLOYMENT_TAG=""; fi
+        else
+          DEPLOYMENT_TAG="$(aws ecr list-images --repository-name $${REPOSITORY_NAME} --no-paginate --max-results 1000 --query 'imageIds[?imageDigest==`"'"$${SHA256_DIGEST}"'"`] | [?!contains(imageTag, `"dev"`)] | [?!contains(imageTag, `"qa"`)] | [?!contains(imageTag, `"preprod"`)] | [?!contains(imageTag, `"prod"`)] | [?imageTag!=`"'"$${SERVICE_REPOSITORY}-latest"'"`].imageTag' --output text)"
+        fi
+      - IMAGE_TAG="$${DEPLOYMENT_TAG:=$${LATEST_TAG}}"
+      - |
+        if [ "$${ENVIRONMENT}" = "prod" ] || [ "$${ENVIRONMENT}" = "sandbox" ]; then
+          ENV_IMAGE_TAG="$${IMAGE_TAG}"
+        else
+          ENV_IMAGE_TAG="$${ENVIRONMENT}-$${IMAGE_TAG}"
+        fi
+  build:
+    commands:
+      - echo "Got \"$${IMAGE_TAG}\"."
+      - echo "Using deployment tag \"$${ENV_IMAGE_TAG}\"."
+      # deploy-spa always needs the image pulled locally (for the SPA file extraction below),
+      # but in prod we skip the retag/push since the source tags are already env-prefixed.
+      - docker pull $${REPOSITORY_URL}:$${IMAGE_TAG}
+      - |
+        if [ "$${ENVIRONMENT}" = "prod" ] || [ "$${ENVIRONMENT}" = "sandbox" ]; then
+          echo "Prod: source tags are already env-prefixed, skipping docker retag/push."
+        else
+          docker tag $${REPOSITORY_URL}:$${IMAGE_TAG} $${REPOSITORY_URL}:$${ENV_IMAGE_TAG}
+          docker tag $${REPOSITORY_URL}:$${IMAGE_TAG} $${REPOSITORY_URL}:$${ENVIRONMENT}-$${SERVICE_REPOSITORY}-latest
+          docker push $${REPOSITORY_URL}:$${ENV_IMAGE_TAG}
+          docker push $${REPOSITORY_URL}:$${ENVIRONMENT}-$${SERVICE_REPOSITORY}-latest
+        fi
+      - echo "Extracting SPA code..."
+      - docker create --name extract $${REPOSITORY_URL}:$${ENV_IMAGE_TAG}
+      - mkdir -p build
+      - docker cp extract:/usr/share/nginx/html/app/. build
+      - docker rm -f extract
+  post_build:
+    commands:
+      - echo "SPA code has been extracted."
+artifacts:
+  files:
+    - "**/*"
+  base-directory: build

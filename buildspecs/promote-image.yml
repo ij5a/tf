@@ -1,0 +1,40 @@
+version: 0.2
+
+env:
+  variables:
+    IMAGE_PROMOTION_SOURCE_ENVIRONMENT: "${image_promotion_source_environment}"
+    IMAGE_PROMOTION_DESTINATION_ENVIRONMENT: "${image_promotion_destination_environment}"
+    IMAGE_PROMOTION_SOURCE_ECR: "${image_promotion_source_ecr}"
+    IMAGE_PROMOTION_DESTINATION_ECR: "${image_promotion_destination_ecr}"
+    SERVICE_REPOSITORY: "${service_repository}"
+
+phases:
+  pre_build:
+    commands:
+      - echo "Logging in to ECR $${IMAGE_PROMOTION_SOURCE_ENVIRONMENT}..."
+      - aws ecr get-login-password --region $${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin $(echo $${IMAGE_PROMOTION_SOURCE_ECR} | sed -E 's/\/.*$//g')
+      - SHA256_DIGEST="$(aws ecr list-images --repository-name $(echo $${IMAGE_PROMOTION_SOURCE_ECR} | sed -E 's/^.*\///g') --no-paginate --max-results 1000 --query 'imageIds[?imageTag==`"'"$${IMAGE_PROMOTION_SOURCE_ENVIRONMENT}-$${SERVICE_REPOSITORY}-latest"'"`].imageDigest' --output text)"
+      # The deploy-image step only pushes env-prefixed tags, so the versioned tag sharing this
+      # digest is also env-prefixed (e.g. qa-acme-central-v6.5.402-20260406-00). Filter only the
+      # "-latest" alias out; the source-env prefix is expected and gets stripped below.
+      - DEPLOYMENT_TAG="$(aws ecr list-images --repository-name $(echo $${IMAGE_PROMOTION_SOURCE_ECR} | sed -E 's/^.*\///g') --no-paginate --max-results 1000 --query 'imageIds[?imageDigest==`"'"$${SHA256_DIGEST}"'"`] | [?!contains(imageTag, `"-latest"`)].imageTag | [0]' --output text)"
+      - if [ "$${DEPLOYMENT_TAG}" = "None" ]; then DEPLOYMENT_TAG=""; fi
+      - IMAGE_TAG="$${DEPLOYMENT_TAG:=$${IMAGE_PROMOTION_SOURCE_ENVIRONMENT}-$${SERVICE_REPOSITORY}-latest}"
+      # Strip the source-env prefix (e.g. "qa-acme-central-v6.5.402-20260406-00" -> "acme-central-v6.5.402-20260406-00")
+      # so ENV_IMAGE_TAG becomes "prod-acme-central-v6.5.402-20260406-00" instead of "prod-qa-acme-central-...".
+      - BARE_VERSIONED_TAG="$${IMAGE_TAG#$${IMAGE_PROMOTION_SOURCE_ENVIRONMENT}-}"
+      - ENV_IMAGE_TAG="$${IMAGE_PROMOTION_DESTINATION_ENVIRONMENT}-$${BARE_VERSIONED_TAG}"
+  build:
+    commands:
+      - echo "Got \"$${IMAGE_TAG}\"."
+      - echo "Creating a new tag -> \"$${ENV_IMAGE_TAG}\"."
+      - docker pull $${IMAGE_PROMOTION_SOURCE_ECR}:$${IMAGE_TAG}
+      - docker tag $${IMAGE_PROMOTION_SOURCE_ECR}:$${IMAGE_TAG} $${IMAGE_PROMOTION_DESTINATION_ECR}:$${ENV_IMAGE_TAG}
+      - docker tag $${IMAGE_PROMOTION_SOURCE_ECR}:$${IMAGE_TAG} $${IMAGE_PROMOTION_DESTINATION_ECR}:$${IMAGE_PROMOTION_DESTINATION_ENVIRONMENT}-$${SERVICE_REPOSITORY}-latest
+  post_build:
+    commands:
+      - echo "Logging in to ECR $${IMAGE_PROMOTION_DESTINATION_ENVIRONMENT}..."
+      - aws ecr get-login-password --region $${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin $(echo $${IMAGE_PROMOTION_DESTINATION_ECR} | sed -E 's/\/.*$//g')
+      - docker push $${IMAGE_PROMOTION_DESTINATION_ECR}:$${ENV_IMAGE_TAG}
+      - docker push $${IMAGE_PROMOTION_DESTINATION_ECR}:$${IMAGE_PROMOTION_DESTINATION_ENVIRONMENT}-$${SERVICE_REPOSITORY}-latest
+      - echo "Image promotion completed successfully."

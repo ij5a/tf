@@ -1,0 +1,63 @@
+name: validate
+
+# Credential-free PR gate. No AWS access — everything here runs offline:
+# fmt, init -backend=false, validate, tflint, and a trivy IaC scan.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  TOFU_VERSION: "1.12.3"
+
+jobs:
+  tofu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: ${{ env.TOFU_VERSION }}
+          tofu_wrapper: false
+
+      - name: fmt
+        run: tofu fmt -check -recursive
+
+      - name: init
+        run: tofu init -backend=false
+
+      - name: validate (root)
+        run: tofu validate
+
+      - name: validate (modules)
+        run: |
+          for m in modules/*/; do
+            echo "== $m =="
+            ( cd "$m" && tofu init -backend=false && tofu validate )
+          done
+
+  tflint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.63.1
+      - run: tflint --init
+      - run: tflint --recursive
+
+  trivy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"

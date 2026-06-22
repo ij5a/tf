@@ -1,0 +1,10 @@
+# OpenTofu / Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+
+# Local secrets — this showcase ships placeholders only, never real values
+secrets*.tfvars

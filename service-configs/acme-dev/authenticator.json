@@ -1,0 +1,5 @@
+{
+  "_comment": "Placeholder config for the showcase — no real values.",
+  "appEnv": "dev",
+  "logLevel": "info"
+}

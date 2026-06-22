@@ -1,0 +1,5 @@
+# AWS-0054 (ALB listener not HTTPS): the apigw ALB is internal (internal = true)
+# and only reachable from the CloudFront managed prefix list. TLS is terminated
+# at CloudFront; the CloudFront -> origin hop is HTTP inside the VPC by design.
+# See alb.tf.
+AWS-0054
