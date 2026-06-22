@@ -39,6 +39,100 @@ It covers four scenarios end to end:
   (`cloudwatch*.tf`), VPN tunnel alarms (`cloudwatch-vpn.tf`), and SNS → Slack
   notifications via small Go lambdas (`slack.tf`, `lambda.tf`).
 
+## Architecture
+
+Both diagrams render on GitHub. Every name is a sanitized placeholder.
+
+### Runtime
+
+```mermaid
+flowchart LR
+  users(["Users"])
+
+  subgraph edge["Edge — us-east-1"]
+    r53["Route 53"]
+    waf["WAF v2"]
+    cf["CloudFront"]
+    acm["ACM (DNS-validated)"]
+  end
+
+  users --> r53 --> cf
+  waf -. attached .-> cf
+  acm -. cert .-> cf
+  cf -->|"static + SPA"| spa[("S3 — SPA")]
+
+  subgraph vpc["VPC — sa-east-1 · 2 AZs"]
+    subgraph pub["Public subnets"]
+      egress["fck-nat (dev) / NAT GW (prod)"]
+      nlb["NLB — eg"]
+    end
+    subgraph priv["Private subnets"]
+      alb["Internal ALB"]
+      ecs["ECS Fargate · Service Connect / CloudMap<br/>apigw · api · central · de · eg · pr · authenticator<br/>+ phpMyAdmin · iso8583 (WAF-restricted)"]
+      aurora[("Aurora Serverless v2")]
+      cache[("ElastiCache — Valkey")]
+      demysql[("de MySQL RDS — optional")]
+    end
+    sm["Secrets Manager"]
+  end
+
+  cf -->|"dynamic paths"| alb
+  alb -->|"apigw · de · admin"| ecs
+  nlb -->|"eg"| ecs
+  ecs -->|"central"| aurora
+  ecs -->|"central · de"| cache
+  ecs -.-> demysql
+  ecs --> sm
+  ecs -. egress .-> egress
+
+  subgraph hybrid["Legacy / hybrid"]
+    peer["VPC peering<br/>legacy DB + Redis"]
+    tgw["Transit Gateway — Twingate"]
+    dms["DMS"]
+  end
+
+  tgw -. private access .-> ecs
+  ecs <--> peer
+  dms --> aurora
+```
+
+Request path: Route 53 → CloudFront (WAF + ACM) → S3 for the SPA, or the internal ALB for dynamic paths → ECS Fargate. Every Fargate service joins the same CloudMap namespace (Service Connect); only `apigw`, `de`, `eg`, and the WAF-restricted admin tools sit behind a load balancer — the rest are reachable by service discovery only. Aurora Serverless v2 backs the `central` service; ElastiCache (Valkey) backs `central` and `de`. Legacy systems connect over cross-account VPC peering and a Transit Gateway (Twingate), with a DMS migration into Aurora.
+
+### Delivery & alerts
+
+```mermaid
+flowchart LR
+  subgraph cicd["CI/CD"]
+    push["ECR image push"] --> eb1["EventBridge"]
+    eb1 --> cp["CodePipeline · source: ECR"]
+    cp --> appr["Manual approval (non-dev)"]
+    appr --> cb["CodeBuild · deploy buildspec"]
+    cb --> dep["Deploy → ECS / S3"]
+    cp -. SPA pipeline .-> inv["Lambda · cf-invalidator"]
+    inv --> cfd["CloudFront"]
+  end
+
+  subgraph obs["Monitoring & alerts"]
+    r53hc["Route 53 health checks"] --> cw["CloudWatch alarms"]
+    cw --> sns["SNS · notify-slack"]
+    vpn["VPN tunnel alarms"] --> sns
+    sns --> nslam["notify-slack Lambda"]
+    nslam --> slack(["Slack"])
+    sns -. subscribe .-> pd(["PagerDuty"])
+    gd["GuardDuty"] --> eb2["EventBridge"]
+    eb2 --> gdlam["guardduty-slack Lambda"]
+    gdlam --> slack
+    cpev["CodePipeline events"] --> eb3["EventBridge"]
+    eb3 --> cplam["codepipeline-slack Lambda"]
+    cplam --> slack
+    dash["CloudWatch dashboards"]
+  end
+```
+
+An image push to ECR triggers the pipeline through EventBridge (non-dev waits on a manual approval); the SPA pipeline also invalidates CloudFront via a Lambda. CloudWatch alarms plus the VPN and Route 53 health checks fan out through SNS to a notify-slack Lambda and PagerDuty; GuardDuty findings and CodePipeline events post to Slack through their own small Go lambdas.
+
+Region split: WAF, ACM, CloudFront, and one notify-slack/PagerDuty stack run in `us-east-1`; everything else in `sa-east-1`. Route 53 NS records are delegated from the master-payer account.
+
 ## Design decisions worth calling out
 
 - **One config, many environments.** Everything is gated by `enable_*` flags and
