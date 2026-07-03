@@ -63,6 +63,14 @@ data "aws_iam_policy_document" "codepipeline" {
     resources = [data.aws_ecr_repository.this.arn]
   }
 
+  # the ECR-push EventBridge rule assumes this same role to kick the pipeline on a new image
+  statement {
+    sid       = "StartPipeline"
+    effect    = "Allow"
+    actions   = ["codepipeline:StartPipelineExecution"]
+    resources = ["arn:aws:codepipeline:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:${var.tags.project}-${var.tags.environment}-*"]
+  }
+
   statement {
     sid     = "InvokeCodeBuild"
     effect  = "Allow"
@@ -236,7 +244,7 @@ locals {
   }
 
   # parse the promotion dest <acct>.dkr.ecr.<region>.amazonaws.com/<repo> URI into an ARN so the
-  # codebuild EcrRepo scope can allow the cross-account push (col-qa/mex-qa promote into prod's repo)
+  # codebuild EcrRepo scope can allow the cross-account push (a lower env promotes into prod's repo)
   promotion_dest_ecr_arn = format(
     "arn:aws:ecr:%s:%s:repository/%s",
     split(".", split("/", var.image_promotion_destination_ecr)[0])[3],

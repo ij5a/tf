@@ -17,6 +17,22 @@ resource "aws_route53_record" "cf" {
   }
 }
 
+# Apex A record for the standalone phpMyAdmin CloudFront. allow_overwrite so it hands off cleanly
+# to aws_route53_record.cf (apigw) when the full compute stack lands.
+resource "aws_route53_record" "phpmyadmin_standalone" {
+  count           = var.enable_route53 && var.enable_standalone_phpmyadmin ? 1 : 0
+  allow_overwrite = true
+  name            = var.domain_name
+  type            = "A"
+  zone_id         = aws_route53_zone.domain[0].zone_id
+
+  alias {
+    name                   = module.cdn_phpmyadmin[0].cloudfront_distribution_domain_name
+    zone_id                = module.cdn_phpmyadmin[0].cloudfront_distribution_hosted_zone_id
+    evaluate_target_health = true
+  }
+}
+
 resource "aws_route53_record" "www" {
   count           = var.enable_route53 && var.enable_cloudfront ? 1 : 0
   allow_overwrite = true

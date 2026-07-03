@@ -61,7 +61,7 @@ module "elasticache" {
 }
 
 output "elasticache_endpoints" {
-  description = "ElastiCache (Valkey) endpoints keyed by service. 'central' is cluster-mode-disabled (primary + reader populated, configuration is null). 'de' is cluster-mode-enabled (configuration populated, primary/reader are null). Empty for envs with enable_elasticache=false (chl-preprod, per-preprod, chl-prod, per-prod, col-prod). Legacy Redis hostname (use_legacy_redis=true) is not surfaced — it lives outside tofu."
+  description = "ElastiCache (Valkey) endpoints keyed by service. 'central' is cluster-mode-disabled (primary + reader populated, configuration is null). 'de' is cluster-mode-enabled (configuration populated, primary/reader are null). Empty for envs with enable_elasticache=false. Legacy Redis hostname (use_legacy_redis=true) is not surfaced — it lives outside tofu."
   value = {
     for k, v in module.elasticache : k => {
       primary       = v.replication_group_primary_endpoint_address

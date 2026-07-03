@@ -29,8 +29,8 @@ module "vpc" {
     "${local.envs["${var.tags.project}-${var.tags.environment}"]["cidr_prefix"]}.96.0/19",
     "${local.envs["${var.tags.project}-${var.tags.environment}"]["cidr_prefix"]}.128.0/19"
   ]
-  enable_nat_gateway     = var.tags.environment == "prod"
-  single_nat_gateway     = var.tags.environment == "prod"
+  enable_nat_gateway     = var.tags.environment == "prod" && var.enable_ecs
+  single_nat_gateway     = var.tags.environment == "prod" && var.enable_ecs
   one_nat_gateway_per_az = false
 
   enable_flow_log                      = var.enable_vpc_flow_logs
@@ -85,7 +85,7 @@ module "fck_nat" {
 }
 
 # Look up NAT Gateways in the legacy pre-existing VPC for envs with use_existing_vpc=true.
-# tofu-managed envs (mex-prod NAT GW, qa/dev fck-nat) skip these via the count guard.
+# tofu-managed envs (prod NAT GW, qa/dev fck-nat) skip these via the count guard.
 data "aws_nat_gateways" "legacy" {
   count  = var.use_existing_vpc ? 1 : 0
   vpc_id = var.existing_vpc_details.id

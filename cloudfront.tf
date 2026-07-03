@@ -257,3 +257,62 @@ module "cdn" {
   # requests without file extensions to /index.html at the viewer-request stage.
   # Omitted entirely as the module doesn't handle null or empty values well.
 }
+
+# Standalone phpMyAdmin front door. Separate from module.cdn (apigw): single default behavior to
+# the dedicated internal ALB, gated by its own CF-WAF. Interim - destroys when enable_standalone_phpmyadmin flips.
+module "cdn_phpmyadmin" {
+  source  = var.module_sources.cloudfront.source
+  version = var.module_sources.cloudfront.version
+
+  count = var.enable_standalone_phpmyadmin ? 1 : 0
+
+  aliases     = [var.domain_name]
+  comment     = "phpMyAdmin - ${var.domain_name}"
+  enabled     = true
+  price_class = "PriceClass_100" # ponytail: interim internal tool gated to one Twingate IP, not the global client front door
+  web_acl_id  = aws_wafv2_web_acl.phpmyadmin_standalone[0].arn
+
+  vpc_origin = {
+    alb = {
+      name                   = aws_lb.phpmyadmin_standalone[0].name
+      arn                    = aws_lb.phpmyadmin_standalone[0].arn
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols = {
+        items    = ["TLSv1.2"]
+        quantity = 1
+      }
+    }
+  }
+
+  origin = {
+    phpmyadmin = {
+      domain_name = aws_lb.phpmyadmin_standalone[0].dns_name
+      vpc_origin_config = {
+        vpc_origin_key           = "alb"
+        origin_keepalive_timeout = 60
+        origin_read_timeout      = 60
+      }
+    }
+  }
+
+  # ponytail: single default behavior to the ALB - no ordered behaviors, no SPA function, no second origin
+  default_cache_behavior = {
+    allowed_methods            = ["GET", "HEAD", "OPTIONS", "PUT", "PATCH", "POST", "DELETE"]
+    cache_policy_id            = data.aws_cloudfront_cache_policy.caching_disabled.id
+    cached_methods             = ["GET", "HEAD", "OPTIONS"]
+    compress                   = true
+    origin_request_policy_id   = data.aws_cloudfront_origin_request_policy.all_viewer_except_host_header.id
+    response_headers_policy_id = data.aws_cloudfront_response_headers_policy.simple_cors.id
+    target_origin_id           = "phpmyadmin"
+    viewer_protocol_policy     = "redirect-to-https"
+    function_association       = {}
+  }
+
+  viewer_certificate = {
+    acm_certificate_arn      = module.acm_cert_us_east_1[0].cert_arn
+    minimum_protocol_version = "TLSv1.2_2021"
+    ssl_support_method       = "sni-only"
+  }
+}

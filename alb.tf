@@ -298,6 +298,74 @@ resource "aws_lb_listener_rule" "phpmyadmin" {
   depends_on = [module.alb, aws_lb_target_group.phpmyadmin]
 }
 
+# Standalone phpMyAdmin front door: own internal ALB fronted by its own public CloudFront + CF-WAF,
+# independent of the apigw ALB. Interim tool for the prod Aurora migration; tears down via the
+# gate when the full compute stack (enable_alb/enable_cloudfront) lands.
+resource "aws_security_group" "phpmyadmin_standalone_alb" {
+  count       = var.enable_standalone_phpmyadmin ? 1 : 0
+  name        = "${var.tags.project}-${var.tags.environment}-phpmyadmin-alb"
+  description = "Standalone phpMyAdmin ALB - CloudFront in, ECS task out"
+  vpc_id      = try(module.vpc[0].vpc_id, var.existing_vpc_details.id)
+
+  ingress {
+    description     = "CloudFront managed prefix list"
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    prefix_list_ids = [data.aws_ec2_managed_prefix_list.cf.id]
+  }
+
+  egress {
+    description = "phpMyAdmin ECS task"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = [try(module.vpc[0].vpc_cidr_block, var.existing_vpc_details.cidr_block)]
+  }
+}
+
+resource "aws_lb" "phpmyadmin_standalone" {
+  count              = var.enable_standalone_phpmyadmin ? 1 : 0
+  name               = "${var.tags.project}-${var.tags.environment}-phpmyadmin"
+  internal           = true
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.phpmyadmin_standalone_alb[0].id]
+  subnets            = try(module.vpc[0].private_subnets, var.existing_vpc_details.private_subnet_ids)
+}
+
+resource "aws_lb_target_group" "phpmyadmin_standalone" {
+  count       = var.enable_standalone_phpmyadmin ? 1 : 0
+  name        = "${var.tags.project}-${var.tags.environment}-phpmyadmin-sa"
+  port        = 80
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = try(module.vpc[0].vpc_id, var.existing_vpc_details.id)
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 5
+    interval            = 30
+    matcher             = "200"
+    path                = "/phpmyadmin/"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    timeout             = 5
+    unhealthy_threshold = 2
+  }
+}
+
+resource "aws_lb_listener" "phpmyadmin_standalone" {
+  count             = var.enable_standalone_phpmyadmin ? 1 : 0
+  load_balancer_arn = aws_lb.phpmyadmin_standalone[0].arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.phpmyadmin_standalone[0].arn
+  }
+}
+
 # iso8583-playground target group; attached to apigw-central ALB via listener rule below.
 # Relaxed thresholds for a Node SSR app (slower to come healthy than the phpMyAdmin image).
 resource "aws_lb_target_group" "iso8583" {

@@ -42,6 +42,57 @@ resource "aws_wafv2_ip_set" "phpmyadmin_whitelist" {
   addresses          = [var.twingate_ip]
 }
 
+# Standalone phpMyAdmin CloudFront WAF: whole distribution is phpMyAdmin, so the ACL just
+# default-blocks and allows the Twingate egress IP - no per-path rules needed.
+resource "aws_wafv2_ip_set" "phpmyadmin_standalone" {
+  count              = var.enable_standalone_phpmyadmin ? 1 : 0
+  provider           = aws.us-east-1
+  name               = "${var.tags.project}-${var.tags.environment}-phpmyadmin-standalone"
+  description        = "IPs allowed to reach the standalone phpMyAdmin CloudFront"
+  scope              = "CLOUDFRONT"
+  ip_address_version = "IPV4"
+  addresses          = [var.twingate_ip]
+}
+
+resource "aws_wafv2_web_acl" "phpmyadmin_standalone" {
+  count       = var.enable_standalone_phpmyadmin ? 1 : 0
+  provider    = aws.us-east-1
+  name        = "${var.tags.project}-${var.tags.environment}-phpmyadmin-standalone"
+  description = "Standalone phpMyAdmin - allow Twingate only"
+  scope       = "CLOUDFRONT"
+
+  default_action {
+    block {}
+  }
+
+  rule {
+    name     = "ip-allowlist"
+    priority = 0
+
+    action {
+      allow {}
+    }
+
+    statement {
+      ip_set_reference_statement {
+        arn = aws_wafv2_ip_set.phpmyadmin_standalone[0].arn
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "phpmyadmin-standalone-ip-allowlist"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "${var.tags.project}-${var.tags.environment}-phpmyadmin-standalone"
+    sampled_requests_enabled   = true
+  }
+}
+
 resource "aws_wafv2_ip_set" "iso8583_whitelist" {
   provider           = aws.us-east-1
   for_each           = var.enable_iso8583_playground ? aws_wafv2_ip_set.ip_whitelist : {}

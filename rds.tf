@@ -294,7 +294,7 @@ module "de_mysql_rds" {
 }
 
 output "rds_endpoints" {
-  description = "RDS endpoints keyed by service. 'central' = Aurora MySQL writer/reader/port. 'de' = standalone MySQL (writer == reader since single-instance) when enable_de_mysql_rds=true. Empty for envs with enable_serverless_aurora=false (chl-prod, per-prod). Legacy DB hostnames (use_legacy_db=true) are not surfaced — they live outside tofu."
+  description = "RDS endpoints keyed by service. 'central' = Aurora MySQL writer/reader/port. 'de' = standalone MySQL (writer == reader since single-instance) when enable_de_mysql_rds=true. Empty for envs with enable_serverless_aurora=false. Legacy DB hostnames (use_legacy_db=true) are not surfaced — they live outside tofu."
   value = merge(
     {
       for k, v in module.aurora_mysql_v2 : k => {

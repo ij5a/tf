@@ -1,3 +1,8 @@
-build:
-	GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bootstrap .
-	zip -j lambda-handler.zip bootstrap
+.PHONY: default
+
+default:
+	rm -fv lambda-handler.zip bootstrap
+	GOOS=linux GOARCH=arm64 go build -trimpath -o bootstrap invalidate.go
+	TZ=UTC touch -t 202001010000.00 bootstrap
+	zip -X -9 lambda-handler.zip bootstrap
+	rm -fv bootstrap

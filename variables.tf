@@ -288,6 +288,12 @@ variable "enable_phpmyadmin" {
   default     = false
 }
 
+variable "enable_standalone_phpmyadmin" {
+  description = "Stand up phpMyAdmin behind its own public CloudFront + CF-WAF + internal ALB, independent of the apigw front door. Requires enable_ecs and enable_phpmyadmin. Interim tool for the prod Aurora migration; folds back into the apigw path once the full compute stack (enable_alb/enable_cloudfront) lands."
+  type        = bool
+  default     = false
+}
+
 variable "enable_iso8583_playground" {
   description = "Enable iso8583-playground internal test tool"
   type        = bool
@@ -381,7 +387,7 @@ variable "enable_vpc_flow_logs" {
 }
 
 variable "manage_existing_vpc_flow_log" {
-  description = "Create an aws_flow_log against the existing VPC referenced by existing_vpc_details. Only meaningful when use_existing_vpc is true. Set to true exactly once per shared legacy VPC (e.g. chl-prod owns the flow log for the 10.50.0.0/16 VPC shared with per-prod and the preprod envs). Default false to avoid duplicate flow logs."
+  description = "Create an aws_flow_log against the existing VPC referenced by existing_vpc_details. Only meaningful when use_existing_vpc is true. Set to true exactly once per shared legacy VPC (one env owns each shared VPC's flow log). Default false to avoid duplicate flow logs."
   type        = bool
   default     = false
 }
@@ -410,7 +416,7 @@ variable "existing_vpc_details" {
   })
   default = {
     id                      = "vpc-foobar"
-    cidr_block              = "172.16.0.0/16"
+    cidr_block              = "10.99.0.0/16"
     public_subnet_ids       = ["subnet-foobar-public-1", "subnet-foobar-public-2"]
     private_subnet_ids      = ["subnet-foobar-private-1", "subnet-foobar-private-2"]
     public_route_table_ids  = ["rtb-foobar-public-1", "rtb-foobar-public-2"]

@@ -125,7 +125,7 @@ locals {
 module "ecs_service" {
   source                   = var.module_sources.ecs_service.source
   version                  = var.module_sources.ecs_service.version
-  for_each                 = var.enable_ecs ? toset([for service in var.services : service if service != "spa"]) : toset([])
+  for_each                 = var.enable_ecs && !var.enable_standalone_phpmyadmin ? toset([for service in var.services : service if service != "spa"]) : toset([])
   cluster_arn              = module.ecs[0].arn
   cpu                      = var.service_overall_cpu_mem_combination.cpu
   enable_execute_command   = true
@@ -312,7 +312,7 @@ module "ecs_service" {
     }]
   }
 
-  load_balancer = strcontains(each.key, "apigw") || each.key == "de" || each.key == "eg" ? {
+  load_balancer = strcontains(each.key, "apigw") || each.key == "de" || (each.key == "eg" && var.enable_nlb) ? {
     (each.key) = {
       target_group_arn = each.key == "apigw-central" ? module.alb["${var.tags.project}-${var.tags.environment}"].target_groups[each.key].arn : each.key == "eg" ? module.nlb["${var.tags.project}-${var.tags.environment}"].target_groups[each.key].arn : aws_lb_target_group.this[each.key].arn
       container_name   = each.key
@@ -583,7 +583,8 @@ module "phpmyadmin" {
 
   load_balancer = {
     "phpmyadmin" = {
-      target_group_arn = aws_lb_target_group.phpmyadmin[0].arn
+      # apigw ALB TG when enable_alb, else the standalone TG. Same apigw TG for enable_alb envs - no diff.
+      target_group_arn = coalesce(try(aws_lb_target_group.phpmyadmin[0].arn, null), try(aws_lb_target_group.phpmyadmin_standalone[0].arn, null))
       container_name   = "phpmyadmin"
       container_port   = 80
     }
@@ -660,15 +661,15 @@ module "phpmyadmin" {
   depends_on = [module.aurora_mysql_v2]
 }
 
-# iso8583-playground: internal Nuxt SSR load-test tool, single sized-up task (no DB, no secrets).
+# iso8583-playground: internal Nuxt SSR load-test tool (no DB, no secrets). Idle-sized — raise cpu/memory before a load test.
 module "iso8583" {
   source                   = var.module_sources.ecs_service.source
   version                  = var.module_sources.ecs_service.version
   count                    = var.enable_ecs && var.enable_iso8583_playground ? 1 : 0
   cluster_arn              = module.ecs[0].arn
-  cpu                      = 2048
+  cpu                      = 512
   enable_execute_command   = true
-  memory                   = 4096
+  memory                   = 1024
   name                     = "iso8583"
   family                   = "${var.tags.project}-${var.tags.environment}-iso8583"
   desired_count            = 1
@@ -689,9 +690,9 @@ module "iso8583" {
 
   container_definitions = {
     "iso8583" = {
-      cpu                                    = 2048
-      memory                                 = 4096
-      memoryReservation                      = 4096
+      cpu                                    = 512
+      memory                                 = 1024
+      memoryReservation                      = 1024
       enable_cloudwatch_logging              = var.enable_cloudwatch_logging
       cloudwatch_log_group_name              = "${var.tags.project}-${var.tags.environment}-iso8583"
       cloudwatch_log_group_retention_in_days = var.cloudwatch_log_group_retention_in_days
