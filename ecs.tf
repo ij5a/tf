@@ -437,6 +437,38 @@ module "ecs_service" {
   }
 }
 
+# phpMyAdmin dropdown servers - the PMA_* env lists join these positionally, so all fields stay equal length.
+# Reader entry only when a reader exists: at aurora_instance_count = 1 the -ro endpoint silently routes to the writer.
+locals {
+  pma_servers = concat(
+    [{
+      host       = module.aurora_mysql_v2["central"].cluster_endpoint
+      port       = tostring(module.aurora_mysql_v2["central"].cluster_port)
+      verbose    = module.aurora_mysql_v2["central"].cluster_id
+      ssl        = "0"
+      ssl_verify = "0"
+      ssl_ca     = ""
+    }],
+    var.aurora_instance_count > 1 ? [{
+      host       = module.aurora_mysql_v2["central"].cluster_reader_endpoint
+      port       = tostring(module.aurora_mysql_v2["central"].cluster_port)
+      verbose    = "${module.aurora_mysql_v2["central"].cluster_id}-ro"
+      ssl        = "0"
+      ssl_verify = "0"
+      ssl_ca     = ""
+    }] : [],
+    # Legacy shared MySQL, non-prod only. TLS on when require_secure_transport (CA fetched by the container entrypoint).
+    var.tags.environment != "prod" ? [{
+      host       = "legacy-mysql.cluster-aaaaexample0.sa-east-1.rds.amazonaws.com"
+      port       = "3306"
+      verbose    = "legacy-mysql"
+      ssl        = var.require_secure_transport ? "1" : "0"
+      ssl_verify = var.require_secure_transport ? "1" : "0"
+      ssl_ca     = var.require_secure_transport ? "/etc/phpmyadmin/rds-ca-bundle.pem" : ""
+    }] : []
+  )
+}
+
 module "phpmyadmin" {
   source                   = var.module_sources.ecs_service.source
   version                  = var.module_sources.ecs_service.version
@@ -496,24 +528,27 @@ module "phpmyadmin" {
       environment = [
         {
           name  = "PMA_HOSTS"
-          value = var.tags.environment == "prod" ? module.aurora_mysql_v2["central"].cluster_endpoint : "${module.aurora_mysql_v2["central"].cluster_endpoint},legacy-mysql.cluster-aaaaexample0.sa-east-1.rds.amazonaws.com"
+          value = join(",", local.pma_servers[*].host)
+        },
+        {
+          name  = "PMA_VERBOSES"
+          value = join(",", local.pma_servers[*].verbose)
         },
         {
           name  = "PMA_PORTS"
-          value = var.tags.environment == "prod" ? tostring(module.aurora_mysql_v2["central"].cluster_port) : "${module.aurora_mysql_v2["central"].cluster_port},3306"
+          value = join(",", local.pma_servers[*].port)
         },
-        # SSL maps to PMA_HOSTS by position. When require_secure_transport is on (non-prod): Aurora off, legacy-mysql on with CA verify.
         {
           name  = "PMA_SSLS"
-          value = var.tags.environment == "prod" ? "0" : (var.require_secure_transport ? "0,1" : "0,0")
+          value = join(",", local.pma_servers[*].ssl)
         },
         {
           name  = "PMA_SSL_VERIFIES"
-          value = var.tags.environment == "prod" ? "0" : (var.require_secure_transport ? "0,1" : "0,0")
+          value = join(",", local.pma_servers[*].ssl_verify)
         },
         {
           name  = "PMA_SSL_CAS"
-          value = var.tags.environment == "prod" ? "" : (var.require_secure_transport ? ",/etc/phpmyadmin/rds-ca-bundle.pem" : ",")
+          value = join(",", local.pma_servers[*].ssl_ca)
         },
         {
           name  = "PMA_ABSOLUTE_URI"
