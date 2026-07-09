@@ -324,6 +324,12 @@ variable "enable_de_mysql_rds" {
   default     = false
 }
 
+variable "enable_pr_serverless_aurora" {
+  description = "Create a dedicated Aurora Serverless v2 cluster for the pr (processor-router) service, separate from the shared central cluster. Requires 'pr' to be in var.services. pr.json keeps pointing at central until its host/user/password are updated by hand after the cluster exists."
+  type        = bool
+  default     = false
+}
+
 variable "de_mysql_rds_config" {
   description = "Sizing config for the standalone MySQL RDS instance created when enable_de_mysql_rds is true."
   type = object({
@@ -552,6 +558,24 @@ variable "aurora_cluster_identifier_random_suffix" {
 
 variable "serverless_aurora_scaling_configuration" {
   description = "Serverless Aurora scaling configuration. 1 ACU = 2 GB of RAM."
+  type = object({
+    min_capacity = number
+    max_capacity = number
+  })
+  default = {
+    min_capacity = 0
+    max_capacity = 1
+  }
+}
+
+variable "pr_aurora_instance_count" {
+  description = "Number of instances in the pr Aurora cluster. Keep 1 for dev/qa; set 2 in prod for an HA reader."
+  type        = number
+  default     = 1
+}
+
+variable "pr_serverless_aurora_scaling_configuration" {
+  description = "Scaling configuration for the pr Aurora cluster, separate from central's so prod sizing overrides don't apply to both. 1 ACU = 2 GB of RAM."
   type = object({
     min_capacity = number
     max_capacity = number

@@ -7,8 +7,17 @@ data "aws_rds_engine_version" "mysql" {
   version = "8.0.mysql_aurora.3.10.3"
 }
 
+# Aurora clusters keyed by service: central (enable_serverless_aurora), plus an optional
+# dedicated pr cluster (enable_pr_serverless_aurora) so pr load/scaling stay off central.
+locals {
+  aurora_cluster_keys = toset(concat(
+    var.enable_serverless_aurora ? [for service in var.services : service if service == "central"] : [],
+    var.enable_pr_serverless_aurora ? [for service in var.services : service if service == "pr"] : [],
+  ))
+}
+
 resource "random_string" "this" {
-  for_each = var.enable_serverless_aurora == true ? toset([for service in var.services : service if service == "central"]) : toset([])
+  for_each = local.aurora_cluster_keys
   length   = 8
   special  = false
   upper    = false
@@ -22,7 +31,7 @@ resource "random_string" "this" {
 # suffix = 26 chars max. RDS limit is 63, so we have plenty of headroom.
 # substr() is applied below as a defensive cap.
 resource "random_string" "aurora_cluster_suffix" {
-  for_each = var.enable_serverless_aurora && var.aurora_cluster_identifier_random_suffix ? toset([for service in var.services : service if service == "central"]) : toset([])
+  for_each = var.aurora_cluster_identifier_random_suffix ? local.aurora_cluster_keys : toset([])
   length   = 6
   special  = false
   upper    = false
@@ -90,7 +99,7 @@ resource "aws_kms_alias" "cloudwatch_logs" {
 module "aurora_mysql_v2" {
   source                                        = var.module_sources.rds_aurora.source
   version                                       = var.module_sources.rds_aurora.version
-  for_each                                      = var.enable_serverless_aurora == true ? toset([for service in var.services : service if service == "central"]) : toset([])
+  for_each                                      = local.aurora_cluster_keys
   apply_immediately                             = true
   backup_retention_period                       = 7
   cluster_performance_insights_enabled          = true
@@ -181,12 +190,10 @@ module "aurora_mysql_v2" {
     }
   }
 
-  serverlessv2_scaling_configuration = {
-    min_capacity = var.serverless_aurora_scaling_configuration.min_capacity
-    max_capacity = var.serverless_aurora_scaling_configuration.max_capacity
-  }
+  # pr has its own sizing vars so prod-only central overrides never apply to it.
+  serverlessv2_scaling_configuration = each.key == "pr" ? var.pr_serverless_aurora_scaling_configuration : var.serverless_aurora_scaling_configuration
 
-  instances = { for i in range(1, var.aurora_instance_count + 1) : i => {} }
+  instances = { for i in range(1, (each.key == "pr" ? var.pr_aurora_instance_count : var.aurora_instance_count) + 1) : i => {} }
 }
 
 module "rds_scheduler" {
@@ -294,7 +301,7 @@ module "de_mysql_rds" {
 }
 
 output "rds_endpoints" {
-  description = "RDS endpoints keyed by service. 'central' = Aurora MySQL writer/reader/port. 'de' = standalone MySQL (writer == reader since single-instance) when enable_de_mysql_rds=true. Empty for envs with enable_serverless_aurora=false. Legacy DB hostnames (use_legacy_db=true) are not surfaced — they live outside tofu."
+  description = "RDS endpoints keyed by service. 'central' and 'pr' = Aurora MySQL writer/reader/port ('pr' only when enable_pr_serverless_aurora=true). 'de' = standalone MySQL (writer == reader since single-instance) when enable_de_mysql_rds=true. Empty for envs with enable_serverless_aurora=false. Legacy DB hostnames (use_legacy_db=true) are not surfaced — they live outside tofu."
   value = merge(
     {
       for k, v in module.aurora_mysql_v2 : k => {
@@ -314,7 +321,7 @@ output "rds_endpoints" {
 }
 
 output "aurora_master_user_secret_arns" {
-  description = "Aurora master-user secret ARNs keyed by service (currently always 'central' when enable_serverless_aurora=true). Used by scripts/acme-sandbox-post-apply.sh to fetch the root password without listing secrets."
+  description = "Aurora master-user secret ARNs keyed by service ('central', plus 'pr' when enable_pr_serverless_aurora=true). Used by scripts/acme-sandbox-post-apply.sh to fetch the root password without listing secrets."
   value = {
     for k, v in module.aurora_mysql_v2 : k => v.cluster_master_user_secret[0].secret_arn
   }

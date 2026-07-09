@@ -457,6 +457,22 @@ locals {
       ssl_verify = "0"
       ssl_ca     = ""
     }] : [],
+    var.enable_pr_serverless_aurora && contains(var.services, "pr") ? [{
+      host       = try(module.aurora_mysql_v2["pr"].cluster_endpoint, "")
+      port       = try(tostring(module.aurora_mysql_v2["pr"].cluster_port), "3306")
+      verbose    = try(module.aurora_mysql_v2["pr"].cluster_id, "pr")
+      ssl        = "0"
+      ssl_verify = "0"
+      ssl_ca     = ""
+    }] : [],
+    var.enable_pr_serverless_aurora && contains(var.services, "pr") && var.pr_aurora_instance_count > 1 ? [{
+      host       = try(module.aurora_mysql_v2["pr"].cluster_reader_endpoint, "")
+      port       = try(tostring(module.aurora_mysql_v2["pr"].cluster_port), "3306")
+      verbose    = try("${module.aurora_mysql_v2["pr"].cluster_id}-ro", "pr-ro")
+      ssl        = "0"
+      ssl_verify = "0"
+      ssl_ca     = ""
+    }] : [],
     # Legacy shared MySQL, non-prod only. TLS on when require_secure_transport (CA fetched by the container entrypoint).
     var.tags.environment != "prod" ? [{
       host       = "legacy-mysql.cluster-aaaaexample0.sa-east-1.rds.amazonaws.com"
@@ -692,8 +708,6 @@ module "phpmyadmin" {
       max_capacity = 0
     }
   }
-
-  depends_on = [module.aurora_mysql_v2]
 }
 
 # iso8583-playground: internal Nuxt SSR load-test tool (no DB, no secrets). Idle-sized — raise cpu/memory before a load test.
