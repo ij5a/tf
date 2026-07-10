@@ -568,6 +568,12 @@ variable "serverless_aurora_scaling_configuration" {
   }
 }
 
+variable "aurora_reader_promotion_tier" {
+  description = "Failover promotion tier for Aurora reader instances (2nd instance onward). Tiers 2-15 let a serverless reader scale on its own load instead of mirroring writer capacity like the tier 0-1 default. null keeps the provider default (tier 0)."
+  type        = number
+  default     = null
+}
+
 variable "pr_aurora_instance_count" {
   description = "Number of instances in the pr Aurora cluster. Keep 1 for dev/qa; set 2 in prod for an HA reader."
   type        = number
