@@ -193,11 +193,11 @@ module "aurora_mysql_v2" {
   # pr has its own sizing vars so prod-only central overrides never apply to it.
   serverlessv2_scaling_configuration = each.key == "pr" ? var.pr_serverless_aurora_scaling_configuration : var.serverless_aurora_scaling_configuration
 
-  # Readers (instance 2+) get the env's promotion tier when set; tiers 2-15 let a serverless
-  # reader scale on its own load instead of mirroring writer capacity (the tier 0-1 default).
+  # Every instance gets the env's promotion tier when set: Aurora consults the tier on readers
+  # only (writers ignore it), and map keys don't track live roles after a failover.
   instances = {
     for i in range(1, (each.key == "pr" ? var.pr_aurora_instance_count : var.aurora_instance_count) + 1) :
-    i => i > 1 && var.aurora_reader_promotion_tier != null ? { promotion_tier = var.aurora_reader_promotion_tier } : {}
+    i => var.aurora_reader_promotion_tier != null ? { promotion_tier = var.aurora_reader_promotion_tier } : {}
   }
 }
 
