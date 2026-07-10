@@ -272,6 +272,10 @@ module "cdn_phpmyadmin" {
   price_class = "PriceClass_100" # ponytail: interim internal tool gated to one Twingate IP, not the global client front door
   web_acl_id  = aws_wafv2_web_acl.phpmyadmin_standalone[0].arn
 
+  # Empty map suppresses the module's default OAC (named literally "s3" — account-global, so the
+  # second standalone-pma env in an account 409s on it). This distro is ALB-only, no OAC needed.
+  origin_access_control = {}
+
   vpc_origin = {
     alb = {
       name                   = aws_lb.phpmyadmin_standalone[0].name
