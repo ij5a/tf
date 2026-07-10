@@ -47,7 +47,7 @@ variable "module_sources" {
     }
     notify_slack = {
       source  = "terraform-aws-modules/notify-slack/aws"
-      version = "~> 7.5.0"
+      version = "~> 7.5.1"
     }
     rds = {
       source  = "terraform-aws-modules/rds/aws"
@@ -59,7 +59,7 @@ variable "module_sources" {
     }
     s3_bucket = {
       source  = "terraform-aws-modules/s3-bucket/aws"
-      version = "~> 5.14.0"
+      version = "~> 5.14.1"
     }
     secrets_manager = {
       source  = "terraform-aws-modules/secrets-manager/aws"
