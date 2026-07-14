@@ -802,6 +802,18 @@ variable "additional_parent_zone_name" {
   default     = ""
 }
 
+variable "additional_domain_name" {
+  description = "When set, this env dual-runs a second hostname alongside domain_name (aws.example.com migration): second Route 53 zone, cert SANs, CloudFront aliases, health checks, PMA URI."
+  type        = string
+  default     = ""
+}
+
+variable "additional_main_route_53_zone_id" {
+  description = "Zone ID of the aws.example.com parent zone in the master payer account; receives the additional domain's NS delegation."
+  type        = string
+  default     = "Z0234567890KLMNOPQRST"
+}
+
 variable "route_53_health_check_urls" {
   description = "Extra HTTPS URLs to create Route 53 health checks for (e.g. legacy EB/EKS endpoints in hybrid envs). The Fargate app paths /api/v1/version and /call-center/log-in are always auto-created when var.domain_name is set; this list is additive."
   type        = list(string)

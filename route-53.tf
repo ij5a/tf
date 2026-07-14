@@ -59,6 +59,53 @@ resource "aws_route53_record" "ns" {
   records         = aws_route53_zone.domain[0].name_servers
 }
 
+# Env slice of the aws.example.com dual-run: second zone + delegation + CDN aliases,
+# active while additional_domain_name is set in tfvars.
+resource "aws_route53_zone" "additional_domain" {
+  count = local.enable_additional_domain ? 1 : 0
+  name  = var.additional_domain_name
+}
+
+# delegate NS to the aws.example.com parent zone in the main AWS account (cross-account)
+resource "aws_route53_record" "additional_ns" {
+  count           = local.enable_additional_domain ? 1 : 0
+  provider        = aws.main
+  allow_overwrite = true
+  name            = var.additional_domain_name
+  type            = "NS"
+  zone_id         = local.additional_parent_zone_id
+  ttl             = 172800
+  records         = aws_route53_zone.additional_domain[0].name_servers
+}
+
+resource "aws_route53_record" "additional_cf" {
+  count           = local.enable_additional_domain && var.enable_cloudfront ? 1 : 0
+  allow_overwrite = true
+  name            = var.additional_domain_name
+  type            = "A"
+  zone_id         = aws_route53_zone.additional_domain[0].zone_id
+
+  alias {
+    name                   = module.cdn["${var.tags.project}-${var.tags.environment}"].cloudfront_distribution_domain_name
+    zone_id                = module.cdn["${var.tags.project}-${var.tags.environment}"].cloudfront_distribution_hosted_zone_id
+    evaluate_target_health = true
+  }
+}
+
+resource "aws_route53_record" "additional_www" {
+  count           = local.enable_additional_domain && var.enable_cloudfront ? 1 : 0
+  allow_overwrite = true
+  name            = "www.${var.additional_domain_name}"
+  type            = "A"
+  zone_id         = aws_route53_zone.additional_domain[0].zone_id
+
+  alias {
+    name                   = module.cdn["${var.tags.project}-${var.tags.environment}"].cloudfront_distribution_domain_name
+    zone_id                = module.cdn["${var.tags.project}-${var.tags.environment}"].cloudfront_distribution_hosted_zone_id
+    evaluate_target_health = true
+  }
+}
+
 # One-time parent zone for the aws.example.com dual-run, owned by the acme-sandbox state.
 # prevent_destroy: sandbox destroy is a documented workflow and would orphan the registrar NS delegation.
 resource "aws_route53_zone" "additional_parent" {

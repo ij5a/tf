@@ -147,7 +147,11 @@ module "cdn" {
     ]
   } : {}
 
-  aliases             = var.use_legacy_endpoints ? concat([var.domain_name, "www.${var.domain_name}"], var.legacy_endpoints) : [var.domain_name, "www.${var.domain_name}"]
+  aliases = concat(
+    [var.domain_name, "www.${var.domain_name}"],
+    var.use_legacy_endpoints ? var.legacy_endpoints : [],
+    local.enable_additional_domain ? [var.additional_domain_name, "www.${var.additional_domain_name}"] : []
+  )
   comment             = var.domain_name
   default_root_object = "index.html"
   enabled             = true

@@ -568,7 +568,7 @@ module "phpmyadmin" {
         },
         {
           name  = "PMA_ABSOLUTE_URI"
-          value = "http://${var.domain_name}/phpmyadmin/"
+          value = "http://${local.enable_additional_domain ? var.additional_domain_name : var.domain_name}/phpmyadmin/"
         },
         {
           name  = "UPLOAD_LIMIT"

@@ -93,9 +93,10 @@ locals {
   # single source of truth for Fargate uptime paths: probed by Route 53, allowed through WAF, shown in the overview dashboard
   fargate_probe_paths = ["/api/v1/version", "/call-center/log-in"]
   # gated on enable_cloudfront: these probe through CloudFront, so when it's off (idle) the checks would only false-alarm.
-  fargate_health_check_urls = var.enable_cloudfront && var.domain_name != "" && var.domain_name != "example.com" ? [
-    for path in local.fargate_probe_paths : "https://${var.domain_name}${path}"
-  ] : []
+  fargate_health_check_urls = var.enable_cloudfront && var.domain_name != "" && var.domain_name != "example.com" ? concat(
+    [for path in local.fargate_probe_paths : "https://${var.domain_name}${path}"],
+    local.enable_additional_domain ? [for path in local.fargate_probe_paths : "https://${var.additional_domain_name}${path}"] : []
+  ) : []
   # Full set of URLs to create as Route 53 health checks: Fargate standard paths + any legacy/extra URLs from tfvars
   route_53_health_check_urls = distinct(concat(local.fargate_health_check_urls, var.route_53_health_check_urls))
 }

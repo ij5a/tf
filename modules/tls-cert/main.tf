@@ -1,7 +1,10 @@
 resource "aws_acm_certificate" "this" {
-  domain_name               = var.domain_name
-  subject_alternative_names = ["*.${var.domain_name}"]
-  validation_method         = "DNS"
+  domain_name = var.domain_name
+  subject_alternative_names = concat(
+    ["*.${var.domain_name}"],
+    var.additional_domain_name != "" ? [var.additional_domain_name, "*.${var.additional_domain_name}"] : []
+  )
+  validation_method = "DNS"
 
   lifecycle {
     create_before_destroy = true
@@ -10,6 +13,12 @@ resource "aws_acm_certificate" "this" {
 
 data "aws_route53_zone" "this" {
   name         = var.domain_name
+  private_zone = false
+}
+
+data "aws_route53_zone" "additional" {
+  count        = var.additional_domain_name != "" ? 1 : 0
+  name         = var.additional_domain_name
   private_zone = false
 }
 
@@ -27,7 +36,8 @@ resource "aws_route53_record" "this" {
   records         = [each.value.record]
   ttl             = 60
   type            = each.value.type
-  zone_id         = data.aws_route53_zone.this.zone_id
+  # each.key is the dvo domain; additional-domain validations land in the additional zone
+  zone_id = var.additional_domain_name != "" && endswith(each.key, var.additional_domain_name) ? data.aws_route53_zone.additional[0].zone_id : data.aws_route53_zone.this.zone_id
 }
 
 resource "aws_acm_certificate_validation" "this" {
