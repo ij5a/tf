@@ -41,7 +41,7 @@ resource "aws_cloudwatch_log_metric_filter" "vpn_ike_dpd_events" {
 
   # Dimensions intentionally omitted: AWS rejects dimensions on simple
   # text-match filter patterns (only JSON $-field patterns support them).
-  # The metric_name already encodes the VPN (-dcc / -cdlv suffix).
+  # The metric_name already encodes the VPN (-site-a / -site-b suffix).
   metric_transformation {
     name          = "VpnIkeDpdEvents-${each.key}"
     namespace     = "acme/${var.tags.project}-${var.tags.environment}/vpn"
