@@ -59,6 +59,26 @@ resource "aws_route53_record" "ns" {
   records         = aws_route53_zone.domain[0].name_servers
 }
 
+# One-time parent zone for the aws.example.com dual-run, owned by the acme-sandbox state.
+# prevent_destroy: sandbox destroy is a documented workflow and would orphan the registrar NS delegation.
+resource "aws_route53_zone" "additional_parent" {
+  count    = var.additional_parent_zone_name != "" ? 1 : 0
+  provider = aws.main
+  name     = var.additional_parent_zone_name
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+output "additional_parent_zone" {
+  description = "Zone ID and name servers of the additional parent zone (paste the NS records at the registrar)."
+  value = try({
+    zone_id      = aws_route53_zone.additional_parent[0].zone_id
+    name_servers = aws_route53_zone.additional_parent[0].name_servers
+  }, null)
+}
+
 resource "aws_route53_health_check" "url" {
   for_each = toset(local.route_53_health_check_urls)
 

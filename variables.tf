@@ -796,6 +796,12 @@ variable "main_route_53_zone_id" {
   default     = "Z0123456789ABCDEFGHIJ"
 }
 
+variable "additional_parent_zone_name" {
+  description = "When set, creates this parent zone in the master payer account (aws.main) for the aws.example.com dual-run. Only acme-sandbox may set it — Route 53 allows duplicate same-name zones, so a second setter creates a silent split-brain parent."
+  type        = string
+  default     = ""
+}
+
 variable "route_53_health_check_urls" {
   description = "Extra HTTPS URLs to create Route 53 health checks for (e.g. legacy EB/EKS endpoints in hybrid envs). The Fargate app paths /api/v1/version and /call-center/log-in are always auto-created when var.domain_name is set; this list is additive."
   type        = list(string)
