@@ -29,8 +29,8 @@ module "vpc" {
     "${local.envs["${var.tags.project}-${var.tags.environment}"]["cidr_prefix"]}.96.0/19",
     "${local.envs["${var.tags.project}-${var.tags.environment}"]["cidr_prefix"]}.128.0/19"
   ]
-  enable_nat_gateway     = var.tags.environment == "prod" && var.enable_ecs
-  single_nat_gateway     = var.tags.environment == "prod" && var.enable_ecs
+  enable_nat_gateway     = local.is_prod && var.enable_ecs
+  single_nat_gateway     = local.is_prod && var.enable_ecs
   one_nat_gateway_per_az = false
 
   enable_flow_log                      = var.enable_vpc_flow_logs
@@ -63,11 +63,11 @@ resource "aws_flow_log" "legacy_vpc" {
 
 # non-prod envs use fck-nat instead of NAT Gateway for cost (https://fck-nat.dev)
 resource "aws_eip" "fck_nat" {
-  count = var.enable_vpc && !var.use_existing_vpc && var.tags.environment != "prod" ? 1 : 0
+  count = var.enable_vpc && !var.use_existing_vpc && !local.is_prod ? 1 : 0
 }
 
 module "fck_nat" {
-  count                = var.enable_vpc && !var.use_existing_vpc && var.tags.environment != "prod" ? 1 : 0
+  count                = var.enable_vpc && !var.use_existing_vpc && !local.is_prod ? 1 : 0
   source               = var.module_sources.fck_nat.source
   version              = var.module_sources.fck_nat.version
   name                 = "${var.tags.project}-${var.tags.environment}-fck-nat"
@@ -150,7 +150,7 @@ resource "aws_route" "client_vpc" {
   count = var.enable_vpc && var.use_twingate_transit_gateway ? (
     var.use_existing_vpc
     ? length(var.existing_vpc_details.private_route_table_ids)
-    : (var.tags.environment == "prod" ? 1 : length(local.envs["${var.tags.project}-${var.tags.environment}"]["azs"]))
+    : (local.is_prod ? 1 : length(local.envs["${var.tags.project}-${var.tags.environment}"]["azs"]))
   ) : 0
   route_table_id         = try(module.vpc[0].private_route_table_ids, var.existing_vpc_details.private_route_table_ids)[count.index]
   destination_cidr_block = var.twingate_vpc_cidr_block

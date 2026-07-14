@@ -22,7 +22,7 @@ resource "aws_cloudwatch_log_group" "waf" {
   count             = var.enable_waf && var.enable_cloudfront ? 1 : 0
   provider          = aws.us-east-1
   name              = "aws-waf-logs-${var.tags.project}-${var.tags.environment}"
-  retention_in_days = var.tags.environment == "prod" ? 90 : 7
+  retention_in_days = local.is_prod ? 90 : 7
 }
 
 resource "aws_wafv2_web_acl_logging_configuration" "this" {

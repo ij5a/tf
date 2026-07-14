@@ -53,7 +53,7 @@ resource "aws_kms_key" "cmk_s3" {
 }
 
 module "s3_access_logs" {
-  count                                      = var.enable_s3 && var.enable_cloudfront && var.tags.environment == "prod" ? 1 : 0
+  count                                      = var.enable_s3 && var.enable_cloudfront && local.is_prod ? 1 : 0
   source                                     = var.module_sources.s3_bucket.source
   version                                    = var.module_sources.s3_bucket.version
   bucket_prefix                              = "${var.tags.project}-${var.tags.environment}-access-logs-"
@@ -72,7 +72,7 @@ module "s3_access_logs" {
 # Managed outside the module so the deprecated rule.prefix attribute doesn't flow through
 # the module's s3_bucket_lifecycle_configuration_rules output (AWS provider 6.x deprecation).
 resource "aws_s3_bucket_lifecycle_configuration" "s3_access_logs" {
-  count  = var.enable_s3 && var.enable_cloudfront && var.tags.environment == "prod" ? 1 : 0
+  count  = var.enable_s3 && var.enable_cloudfront && local.is_prod ? 1 : 0
   bucket = module.s3_access_logs[0].s3_bucket_id
 
   rule {
@@ -88,7 +88,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "s3_access_logs" {
 }
 
 module "elb_access_logs" {
-  count                                 = var.enable_alb && var.tags.environment == "prod" ? 1 : 0
+  count                                 = var.enable_alb && local.is_prod ? 1 : 0
   source                                = var.module_sources.s3_bucket.source
   version                               = var.module_sources.s3_bucket.version
   bucket_prefix                         = "${var.tags.project}-${var.tags.environment}-elb-access-logs-"
@@ -115,7 +115,7 @@ module "elb_access_logs" {
 # Managed outside the module so the deprecated rule.prefix attribute doesn't flow through
 # the module's s3_bucket_lifecycle_configuration_rules output (AWS provider 6.x deprecation).
 resource "aws_s3_bucket_lifecycle_configuration" "elb_access_logs" {
-  count  = var.enable_alb && var.tags.environment == "prod" ? 1 : 0
+  count  = var.enable_alb && local.is_prod ? 1 : 0
   bucket = module.elb_access_logs[0].s3_bucket_id
 
   rule {
@@ -150,7 +150,7 @@ module "s3_bucket" {
     enabled = true
   }
 
-  logging = var.tags.environment == "prod" ? {
+  logging = local.is_prod ? {
     target_bucket = module.s3_access_logs[0].s3_bucket_id
     target_prefix = "${each.key}/"
   } : {}

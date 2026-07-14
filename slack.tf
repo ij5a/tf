@@ -48,7 +48,7 @@ module "notify_slack" {
   source                                 = var.module_sources.notify_slack.source
   version                                = var.module_sources.notify_slack.version
   for_each                               = var.enable_slack_notifications ? local.slack_webhook_urls : {}
-  slack_channel                          = var.tags.environment != "prod" ? "${var.tags.project}-dev-${each.key}" : "${var.tags.project}-${var.tags.environment}-${each.key}"
+  slack_channel                          = !local.is_prod ? "${var.tags.project}-dev-${each.key}" : "${var.tags.project}-${var.tags.environment}-${each.key}"
   slack_username                         = var.slack_username
   kms_key_arn                            = aws_kms_key.notify_slack[0].arn
   slack_webhook_url                      = aws_kms_ciphertext.slack_webhook_url[each.key].ciphertext_blob
@@ -63,7 +63,7 @@ module "notify_slack_alerts_us_east_1" {
   count                                  = var.enable_slack_notifications && var.enable_alert_notifications ? 1 : 0
   source                                 = var.module_sources.notify_slack.source
   version                                = var.module_sources.notify_slack.version
-  slack_channel                          = var.tags.environment != "prod" ? "${var.tags.project}-dev-alerts" : "${var.tags.project}-${var.tags.environment}-alerts"
+  slack_channel                          = !local.is_prod ? "${var.tags.project}-dev-alerts" : "${var.tags.project}-${var.tags.environment}-alerts"
   slack_username                         = var.slack_username
   kms_key_arn                            = aws_kms_key.notify_slack_us_east_1[0].arn
   slack_webhook_url                      = aws_kms_ciphertext.slack_webhook_url_us_east_1[0].ciphertext_blob
@@ -146,7 +146,7 @@ module "codepipeline_slack" {
   runtime                           = "provided.al2023"
   memory_size                       = 128
   timeout                           = 30
-  cloudwatch_logs_retention_in_days = var.tags.environment == "prod" ? 90 : 7
+  cloudwatch_logs_retention_in_days = local.is_prod ? 90 : 7
   create_package                    = false
   local_existing_package            = "lambda-functions/go/codepipeline-slack/lambda-handler.zip"
   architectures                     = ["arm64"]
@@ -172,7 +172,7 @@ module "codepipeline_slack" {
 
   environment_variables = {
     SLACK_BOT_TOKEN = jsondecode(data.aws_secretsmanager_secret_version.slack[0].secret_string)["bot_token"]
-    SLACK_CHANNEL   = var.tags.environment != "prod" ? "acme-dev-deployments" : "acme-${var.tags.environment}-deployments"
+    SLACK_CHANNEL   = !local.is_prod ? "acme-dev-deployments" : "acme-${var.tags.environment}-deployments"
     SLACK_USERNAME  = var.slack_username
     SLACK_ICON_URL  = "https://upload.wikimedia.org/wikipedia/commons/thumb/9/93/Amazon_Web_Services_Logo.svg/512px-Amazon_Web_Services_Logo.svg.png"
     ECR_REPOSITORY  = var.image_repository_name

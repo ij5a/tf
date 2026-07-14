@@ -62,7 +62,7 @@ module "alb" {
     } : {}
   )
 
-  access_logs = var.tags.environment == "prod" ? {
+  access_logs = local.is_prod ? {
     bucket  = module.elb_access_logs[0].s3_bucket_id
     prefix  = "alb"
     enabled = true

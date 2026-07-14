@@ -39,7 +39,7 @@ resource "random_string" "aurora_cluster_suffix" {
 }
 
 data "aws_iam_policy_document" "cloudwatch_logs_kms" {
-  count = var.tags.environment == "prod" && var.enable_serverless_aurora ? 1 : 0
+  count = local.is_prod && var.enable_serverless_aurora ? 1 : 0
 
   statement {
     sid    = "AllowCloudWatchLogsEncryption"
@@ -82,7 +82,7 @@ data "aws_iam_policy_document" "cloudwatch_logs_kms" {
 }
 
 resource "aws_kms_key" "cloudwatch_logs" {
-  count                   = var.tags.environment == "prod" && var.enable_serverless_aurora ? 1 : 0
+  count                   = local.is_prod && var.enable_serverless_aurora ? 1 : 0
   description             = "KMS key for RDS CloudWatch log group encryption"
   enable_key_rotation     = true
   rotation_period_in_days = 90
@@ -91,7 +91,7 @@ resource "aws_kms_key" "cloudwatch_logs" {
 }
 
 resource "aws_kms_alias" "cloudwatch_logs" {
-  count         = var.tags.environment == "prod" && var.enable_serverless_aurora ? 1 : 0
+  count         = local.is_prod && var.enable_serverless_aurora ? 1 : 0
   name          = "alias/${var.tags.project}-${var.tags.environment}-rds-cloudwatch-logs"
   target_key_id = aws_kms_key.cloudwatch_logs[0].key_id
 }
@@ -129,8 +129,8 @@ module "aurora_mysql_v2" {
   skip_final_snapshot                           = false
   storage_encrypted                             = true
   storage_type                                  = "aurora"
-  enabled_cloudwatch_logs_exports               = var.tags.environment == "prod" ? ["audit", "error", "slowquery"] : []
-  create_cloudwatch_log_group                   = var.tags.environment == "prod"
+  enabled_cloudwatch_logs_exports               = local.is_prod ? ["audit", "error", "slowquery"] : []
+  create_cloudwatch_log_group                   = local.is_prod
   cloudwatch_log_group_retention_in_days        = 90
   cloudwatch_log_group_kms_key_id               = try(aws_kms_key.cloudwatch_logs[0].arn, null)
   subnets                                       = try(module.vpc[0].private_subnets, var.existing_vpc_details.private_subnet_ids)
@@ -169,7 +169,7 @@ module "aurora_mysql_v2" {
         name  = "wait_timeout"
         value = "28800"
       }
-      ], var.tags.environment == "prod" ? [
+      ], local.is_prod ? [
       {
         name  = "server_audit_logging"
         value = "1"

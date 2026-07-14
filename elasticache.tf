@@ -30,12 +30,12 @@ module "elasticache" {
   transit_encryption_enabled  = true
   auth_token                  = module.valkey_auth_token[each.key].secret_string
   maintenance_window          = "sun:05:00-sun:09:00"
-  automatic_failover_enabled  = var.tags.environment == "prod"
-  multi_az_enabled            = var.tags.environment == "prod"
-  num_cache_clusters          = var.tags.environment == "prod" ? 2 : 1
+  automatic_failover_enabled  = local.is_prod
+  multi_az_enabled            = local.is_prod
+  num_cache_clusters          = local.is_prod ? 2 : 1
   cluster_mode                = each.key == "de" ? "enabled" : null
   cluster_mode_enabled        = each.key == "de"
-  replicas_per_node_group     = each.key == "de" && var.tags.environment == "prod" ? 1 : null
+  replicas_per_node_group     = each.key == "de" && local.is_prod ? 1 : null
   apply_immediately           = true
   vpc_id                      = try(module.vpc[0].vpc_id, var.existing_vpc_details.id)
   subnet_group_name           = "${var.tags.project}-${var.tags.environment}-${each.key}"

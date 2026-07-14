@@ -17,7 +17,7 @@ module "ecs" {
 
   setting = [{
     "name" : "containerInsights",
-    "value" : coalesce(var.container_insights, var.tags.environment == "prod" ? "enhanced" : "enabled")
+    "value" : coalesce(var.container_insights, local.is_prod ? "enhanced" : "enabled")
   }]
 
   cluster_capacity_providers = ["FARGATE", "FARGATE_SPOT"]
@@ -408,7 +408,7 @@ module "ecs_service" {
     } : {}
   )
 
-  autoscaling_scheduled_actions = var.tags.environment == "prod" ? {
+  autoscaling_scheduled_actions = local.is_prod ? {
     business_hours = {
       schedule         = var.autoscaling_schedule.business_hours
       desired_capacity = split(":", var.service_task_count[each.key])[0]
@@ -474,7 +474,7 @@ locals {
       ssl_ca     = ""
     }] : [],
     # Legacy shared MySQL, non-prod only. TLS on when require_secure_transport (CA fetched by the container entrypoint).
-    var.tags.environment != "prod" ? [{
+    !local.is_prod ? [{
       host       = "legacy-mysql.cluster-aaaaexample0.sa-east-1.rds.amazonaws.com"
       port       = "3306"
       verbose    = "legacy-mysql"
@@ -535,7 +535,7 @@ module "phpmyadmin" {
       readonlyRootFilesystem                 = false
 
       # When require_secure_transport is on (non-prod), fetch the RDS CA bundle at start so phpMyAdmin can verify TLS to legacy-mysql.
-      entrypoint = var.require_secure_transport && var.tags.environment != "prod" ? [
+      entrypoint = var.require_secure_transport && !local.is_prod ? [
         "/bin/sh",
         "-c",
         "mkdir -p /etc/phpmyadmin && curl -fsSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem -o /etc/phpmyadmin/rds-ca-bundle.pem && exec /docker-entrypoint.sh apache2-foreground"
@@ -685,7 +685,7 @@ module "phpmyadmin" {
     }
   }
 
-  autoscaling_scheduled_actions = var.tags.environment == "prod" ? {
+  autoscaling_scheduled_actions = local.is_prod ? {
     business_hours = {
       schedule     = var.autoscaling_schedule.business_hours
       min_capacity = 1

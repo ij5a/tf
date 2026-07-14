@@ -65,7 +65,7 @@ module "guardduty_slack" {
   runtime                           = "provided.al2023"
   memory_size                       = 128
   timeout                           = 30
-  cloudwatch_logs_retention_in_days = var.tags.environment == "prod" ? 90 : 7
+  cloudwatch_logs_retention_in_days = local.is_prod ? 90 : 7
   create_package                    = false
   local_existing_package            = "lambda-functions/go/guardduty-slack/lambda-handler.zip"
   architectures                     = ["arm64"]
