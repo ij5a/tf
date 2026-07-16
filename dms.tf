@@ -146,8 +146,8 @@ resource "aws_dms_replication_config" "serverless" {
   replication_settings = jsonencode({
     FullLoadSettings = {
       TargetTablePrepMode = "TRUNCATE_BEFORE_LOAD"
-      CommitRate          = 1000
-      MaxFullLoadSubTasks = 1
+      CommitRate          = var.dms_migration_details.full_load_settings.commit_rate
+      MaxFullLoadSubTasks = var.dms_migration_details.full_load_settings.max_full_load_sub_tasks
     }
 
     # ValidationSettings = {

@@ -137,6 +137,10 @@ variable "dms_migration_details" {
       min_capacity_units = 1
       max_capacity_units = 1
     })
+    full_load_settings = optional(object({
+      commit_rate             = optional(number, 1000)
+      max_full_load_sub_tasks = optional(number, 1)
+    }), {})
   })
   default = {}
 }
