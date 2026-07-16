@@ -47,6 +47,21 @@ resource "aws_route53_record" "www" {
   }
 }
 
+# Break-glass ALB origin hostname; CloudFront validates the origin cert against this name
+# (the env wildcard cert covers it). Exists only while the break-glass flag is on.
+resource "aws_route53_record" "breakglass" {
+  count   = var.enable_route53 && local.enable_breakglass ? 1 : 0
+  name    = "bg.${local.breakglass_domain}"
+  type    = "A"
+  zone_id = local.enable_additional_domain ? aws_route53_zone.additional_domain[0].zone_id : aws_route53_zone.domain[0].zone_id
+
+  alias {
+    name                   = module.alb_breakglass[0].dns_name
+    zone_id                = module.alb_breakglass[0].zone_id
+    evaluate_target_health = true
+  }
+}
+
 # delegate NS to parent domain in the main AWS account (cross-account)
 resource "aws_route53_record" "ns" {
   count           = var.enable_route53 ? 1 : 0

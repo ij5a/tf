@@ -7,6 +7,9 @@ locals {
     "/iso8583-playground/*",
     "/iso8583-playground",
   ]
+
+  # break-glass flip: api behaviors point at the public ALB origin while the flag is on
+  api_origin_id = local.enable_breakglass ? "api-public" : "api"
 }
 
 # SPA routing rewrite at viewer-request; leaves paths with extensions alone so API 4XX stays 4XX
@@ -195,6 +198,28 @@ module "cdn" {
         }
       }
     } : {},
+    # break-glass custom origin. The api origin + vpc_origin above stay declared while this is
+    # active, so reverting is a pure behavior flip - no 15-20 min VPC-origin recreate.
+    (contains(each.value, "apigw-central") || contains(each.value, "apigw-pr")) && local.enable_breakglass ? {
+      api-public = {
+        domain_name = "bg.${local.breakglass_domain}"
+        custom_header = {
+          "x-origin-verify" = random_password.breakglass_origin_verify[0].result
+        }
+        custom_origin_config = {
+          http_port                = 80
+          https_port               = 443
+          origin_protocol_policy   = "https-only"
+          origin_ssl_protocols     = ["TLSv1.2"]
+          origin_keepalive_timeout = 60
+          origin_read_timeout      = 60
+        }
+        origin_shield = {
+          enabled              = true
+          origin_shield_region = "us-east-1"
+        }
+      }
+    } : {},
     contains(each.value, "spa") ? {
       spa = {
         domain_name               = module.s3_bucket["spa"].s3_bucket_bucket_domain_name
@@ -229,7 +254,7 @@ module "cdn" {
     compress                   = true
     origin_request_policy_id   = data.aws_cloudfront_origin_request_policy.all_viewer_except_host_header.id
     response_headers_policy_id = data.aws_cloudfront_response_headers_policy.simple_cors.id
-    target_origin_id           = "api"
+    target_origin_id           = local.api_origin_id
     use_forwarded_values       = false
     viewer_protocol_policy     = "https-only"
     function_association       = {}
@@ -244,7 +269,7 @@ module "cdn" {
       origin_request_policy_id   = data.aws_cloudfront_origin_request_policy.all_viewer_except_host_header.id
       path_pattern               = path_pattern
       response_headers_policy_id = data.aws_cloudfront_response_headers_policy.simple_cors.id
-      target_origin_id           = "api"
+      target_origin_id           = local.api_origin_id
       use_forwarded_values       = false
       viewer_protocol_policy     = "https-only"
     }

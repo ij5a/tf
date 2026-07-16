@@ -13,8 +13,9 @@ module "acm_cert_us_east_1" {
 }
 
 module "acm_cert" {
-  count       = var.enable_acm ? 1 : 0
-  source      = "./modules/tls-cert/"
-  domain_name = var.domain_name
-  depends_on  = [aws_route53_zone.domain]
+  count                  = var.enable_acm ? 1 : 0
+  source                 = "./modules/tls-cert/"
+  domain_name            = var.domain_name
+  additional_domain_name = local.enable_additional_domain ? var.additional_domain_name : ""
+  depends_on             = [aws_route53_zone.domain, aws_route53_zone.additional_domain]
 }

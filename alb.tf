@@ -410,3 +410,275 @@ resource "aws_lb_listener_rule" "iso8583" {
 
   depends_on = [module.alb, aws_lb_target_group.iso8583]
 }
+
+# Break-glass public ALB: parallel internet-facing origin CloudFront swaps to when AWS VPC-Origins
+# breaks (2026-07-16 incident). Reachable only from the CloudFront origin-facing prefix list AND
+# with the x-origin-verify secret CloudFront injects; everything else gets the fixed 403.
+# Off by default in every env; operator steps in cf-vpc-origin-breakglass.md.
+resource "random_password" "breakglass_origin_verify" {
+  count   = local.enable_breakglass ? 1 : 0
+  length  = 32
+  special = false # ALB rule values treat * and ? as wildcards
+}
+
+module "alb_breakglass" {
+  source  = var.module_sources.alb.source
+  version = var.module_sources.alb.version
+  count   = local.enable_breakglass ? 1 : 0
+
+  drop_invalid_header_fields = true
+  enable_deletion_protection = false
+  internal                   = false
+  name                       = "${var.tags.project}-${var.tags.environment}-alb-bg"
+  subnets                    = try(module.vpc[0].public_subnets, var.existing_vpc_details.public_subnet_ids)
+  vpc_id                     = try(module.vpc[0].vpc_id, var.existing_vpc_details.id)
+
+  security_group_ingress_rules = {
+    https = {
+      prefix_list_id = data.aws_ec2_managed_prefix_list.cf.id
+      description    = "CloudFront origin-facing prefix list"
+      from_port      = 443
+      ip_protocol    = "tcp"
+      to_port        = 443
+    }
+  }
+
+  security_group_egress_rules = merge(
+    {
+      apigw = {
+        cidr_ipv4   = try(module.vpc[0].vpc_cidr_block, var.existing_vpc_details.cidr_block)
+        description = "ECS - apigw services"
+        from_port   = var.service_ports["apigw-central"]
+        ip_protocol = "tcp"
+        to_port     = var.service_ports["apigw-central"]
+      }
+    },
+    contains(var.services, "de") ? {
+      de = {
+        cidr_ipv4   = try(module.vpc[0].vpc_cidr_block, var.existing_vpc_details.cidr_block)
+        description = "ECS - de service"
+        from_port   = var.service_ports["de"]
+        ip_protocol = "tcp"
+        to_port     = var.service_ports["de"]
+      }
+    } : {},
+    var.enable_phpmyadmin ? {
+      phpmyadmin = {
+        cidr_ipv4   = try(module.vpc[0].vpc_cidr_block, var.existing_vpc_details.cidr_block)
+        description = "ECS - phpmyadmin service"
+        from_port   = 80
+        ip_protocol = "tcp"
+        to_port     = 80
+      }
+    } : {}
+  )
+
+  access_logs = local.is_prod ? {
+    bucket  = module.elb_access_logs[0].s3_bucket_id
+    prefix  = "alb-bg"
+    enabled = true
+  } : null
+
+  listeners = {
+    https = {
+      port            = 443
+      protocol        = "HTTPS"
+      certificate_arn = module.acm_cert[0].cert_arn
+      # module default is TLS1.3-only, which CloudFront cannot negotiate to an origin
+      ssl_policy = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+
+      fixed_response = {
+        content_type = "text/plain"
+        message_body = "Forbidden"
+        status_code  = "403"
+      }
+
+      rules = merge(
+        contains(var.services, "apigw-pr") ? {
+          apigw-pr = {
+            priority = 1
+            actions = [{
+              forward = { target_group_key = "apigw-pr" }
+            }]
+            # one condition type per block (AND = separate entries) - the provider rejects combined blocks
+            conditions = [
+              {
+                http_header = {
+                  http_header_name = "x-origin-verify"
+                  values           = [random_password.breakglass_origin_verify[0].result]
+                }
+              },
+              {
+                path_pattern = {
+                  values = var.enable_external_processor ? [
+                    "/api/v1/login",
+                    "/api/v1/refreshToken",
+                    "/api/v1/issuer",
+                    "/api/v1/issuer/${var.issuer_code}",
+                    "/api/v1/transactions*",
+                    ] : [
+                    "/api/v1/login",
+                    "/api/v1/refreshToken",
+                  ]
+                }
+              }
+            ]
+          }
+        } : {},
+        contains(var.services, "de") ? {
+          de = {
+            priority = 2
+            actions = [{
+              forward = { target_group_key = "de" }
+            }]
+            conditions = [
+              {
+                http_header = {
+                  http_header_name = "x-origin-verify"
+                  values           = [random_password.breakglass_origin_verify[0].result]
+                }
+              },
+              {
+                path_pattern = {
+                  values = [
+                    "/decision",
+                    "/update"
+                  ]
+                }
+              }
+            ]
+          }
+        } : {},
+        var.enable_phpmyadmin ? {
+          phpmyadmin = {
+            priority = 3
+            actions = [{
+              forward = { target_group_key = "phpmyadmin" }
+            }]
+            conditions = [
+              {
+                http_header = {
+                  http_header_name = "x-origin-verify"
+                  values           = [random_password.breakglass_origin_verify[0].result]
+                }
+              },
+              {
+                path_pattern = {
+                  values = ["/phpmyadmin/*"]
+                }
+              }
+            ]
+          }
+        } : {},
+        {
+          apigw-central = {
+            priority = 4
+            actions = [{
+              forward = { target_group_key = "apigw-central" }
+            }]
+            conditions = [{
+              http_header = {
+                http_header_name = "x-origin-verify"
+                values           = [random_password.breakglass_origin_verify[0].result]
+              }
+            }]
+          }
+        }
+      )
+    }
+  }
+
+  # fast health checks (2x10s) - during an outage every minute of time-to-healthy counts
+  target_groups = merge(
+    {
+      apigw-central = {
+        name                              = "${var.tags.project}-${var.tags.environment}-bg-apigw-c"
+        port                              = var.service_ports["apigw-central"]
+        protocol                          = "HTTP"
+        create_attachment                 = false
+        deregistration_delay              = 5
+        load_balancing_cross_zone_enabled = true
+        target_type                       = "ip"
+        health_check = {
+          enabled             = true
+          healthy_threshold   = 2
+          interval            = 10
+          matcher             = "200"
+          path                = "/echo"
+          port                = "traffic-port"
+          protocol            = "HTTP"
+          timeout             = 5
+          unhealthy_threshold = 2
+        }
+      }
+    },
+    contains(var.services, "apigw-pr") ? {
+      apigw-pr = {
+        name                              = "${var.tags.project}-${var.tags.environment}-bg-apigw-pr"
+        port                              = var.service_ports["apigw-pr"]
+        protocol                          = "HTTP"
+        create_attachment                 = false
+        deregistration_delay              = 5
+        load_balancing_cross_zone_enabled = true
+        target_type                       = "ip"
+        health_check = {
+          enabled             = true
+          healthy_threshold   = 2
+          interval            = 10
+          matcher             = "200"
+          path                = "/echo"
+          port                = "traffic-port"
+          protocol            = "HTTP"
+          timeout             = 5
+          unhealthy_threshold = 2
+        }
+      }
+    } : {},
+    contains(var.services, "de") ? {
+      de = {
+        name                              = "${var.tags.project}-${var.tags.environment}-bg-de"
+        port                              = var.service_ports["de"]
+        protocol                          = "HTTP"
+        create_attachment                 = false
+        deregistration_delay              = 5
+        load_balancing_cross_zone_enabled = true
+        target_type                       = "ip"
+        health_check = {
+          enabled             = true
+          healthy_threshold   = 2
+          interval            = 10
+          matcher             = "200"
+          path                = "/echo"
+          port                = "traffic-port"
+          protocol            = "HTTP"
+          timeout             = 5
+          unhealthy_threshold = 2
+        }
+      }
+    } : {},
+    var.enable_phpmyadmin ? {
+      phpmyadmin = {
+        name                              = "${var.tags.project}-${var.tags.environment}-bg-pma"
+        port                              = 80
+        protocol                          = "HTTP"
+        create_attachment                 = false
+        deregistration_delay              = 5
+        load_balancing_cross_zone_enabled = true
+        target_type                       = "ip"
+        # apache+PMA needs ~30-60s to boot on Fargate Spot; 2x10s marked it unhealthy mid-boot
+        # and ECS drained every task. Healthy side stays fast (2x15s), unhealthy side tolerates boot.
+        health_check = {
+          enabled             = true
+          healthy_threshold   = 2
+          interval            = 15
+          matcher             = "200"
+          path                = "/phpmyadmin/"
+          port                = "traffic-port"
+          protocol            = "HTTP"
+          timeout             = 5
+          unhealthy_threshold = 5
+        }
+      }
+    } : {}
+  )
+}

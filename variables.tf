@@ -191,6 +191,12 @@ variable "enable_alb" {
   default     = true
 }
 
+variable "enable_breakglass_public_alb" {
+  description = "Break-glass for AWS CloudFront VPC-Origins outages: stand up a parallel internet-facing ALB and repoint CloudFront's api behaviors to it as a custom origin (CloudFront + WAF stay in path). Default off everywhere; flip per env only during an incident. Operator runbook: cf-vpc-origin-breakglass.md."
+  type        = bool
+  default     = false
+}
+
 variable "enable_dms" {
   description = "Enable DMS for database migration"
   type        = bool

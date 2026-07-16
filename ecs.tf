@@ -312,13 +312,23 @@ module "ecs_service" {
     }]
   }
 
-  load_balancer = strcontains(each.key, "apigw") || each.key == "de" || (each.key == "eg" && var.enable_nlb) ? {
-    (each.key) = {
-      target_group_arn = each.key == "apigw-central" ? module.alb["${var.tags.project}-${var.tags.environment}"].target_groups[each.key].arn : each.key == "eg" ? module.nlb["${var.tags.project}-${var.tags.environment}"].target_groups[each.key].arn : aws_lb_target_group.this[each.key].arn
-      container_name   = each.key
-      container_port   = var.service_ports[each.key]
-    }
-  } : {}
+  load_balancer = merge(
+    strcontains(each.key, "apigw") || each.key == "de" || (each.key == "eg" && var.enable_nlb) ? {
+      (each.key) = {
+        target_group_arn = each.key == "apigw-central" ? module.alb["${var.tags.project}-${var.tags.environment}"].target_groups[each.key].arn : each.key == "eg" ? module.nlb["${var.tags.project}-${var.tags.environment}"].target_groups[each.key].arn : aws_lb_target_group.this[each.key].arn
+        container_name   = each.key
+        container_port   = var.service_ports[each.key]
+      }
+    } : {},
+    # second registration into the break-glass ALB; in-place service update, rolling redeploy
+    local.enable_breakglass && (strcontains(each.key, "apigw") || each.key == "de") ? {
+      "${each.key}-bg" = {
+        target_group_arn = module.alb_breakglass[0].target_groups[each.key].arn
+        container_name   = each.key
+        container_port   = var.service_ports[each.key]
+      }
+    } : {}
+  )
 
   subnet_ids = try(module.vpc[0].private_subnets, var.existing_vpc_details.private_subnet_ids)
 
@@ -632,14 +642,23 @@ module "phpmyadmin" {
     }]
   }
 
-  load_balancer = {
-    "phpmyadmin" = {
-      # apigw ALB TG when enable_alb, else the standalone TG. Same apigw TG for enable_alb envs - no diff.
-      target_group_arn = coalesce(try(aws_lb_target_group.phpmyadmin[0].arn, null), try(aws_lb_target_group.phpmyadmin_standalone[0].arn, null))
-      container_name   = "phpmyadmin"
-      container_port   = 80
-    }
-  }
+  load_balancer = merge(
+    {
+      "phpmyadmin" = {
+        # apigw ALB TG when enable_alb, else the standalone TG. Same apigw TG for enable_alb envs - no diff.
+        target_group_arn = coalesce(try(aws_lb_target_group.phpmyadmin[0].arn, null), try(aws_lb_target_group.phpmyadmin_standalone[0].arn, null))
+        container_name   = "phpmyadmin"
+        container_port   = 80
+      }
+    },
+    local.enable_breakglass ? {
+      "phpmyadmin-bg" = {
+        target_group_arn = module.alb_breakglass[0].target_groups["phpmyadmin"].arn
+        container_name   = "phpmyadmin"
+        container_port   = 80
+      }
+    } : {}
+  )
 
   subnet_ids = try(module.vpc[0].private_subnets, var.existing_vpc_details.private_subnet_ids)
 
