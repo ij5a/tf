@@ -55,7 +55,7 @@ variable "module_sources" {
     }
     rds_aurora = {
       source  = "terraform-aws-modules/rds-aurora/aws"
-      version = "~> 10.2.0"
+      version = "~> 10.3.0"
     }
     s3_bucket = {
       source  = "terraform-aws-modules/s3-bucket/aws"
