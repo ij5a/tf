@@ -13,4 +13,31 @@ locals {
   breakglass_domain = local.enable_additional_domain ? var.additional_domain_name : var.domain_name
   # in-state parent zone when this env owns it (acme-sandbox), else the shared parent by ID
   additional_parent_zone_id = var.additional_parent_zone_name != "" ? aws_route53_zone.additional_parent[0].zone_id : var.additional_main_route_53_zone_id
+
+  # every ECS service runs 100% Fargate Spot with circuit-breaker auto-rollback
+  fargate_spot_strategy = {
+    "FARGATE_SPOT" = {
+      "base"              = 0
+      "weight"            = 1
+      "capacity_provider" = "FARGATE_SPOT"
+    }
+  }
+  ecs_circuit_breaker = {
+    enable   = true
+    rollback = true
+  }
+
+  # standard /echo health check for map-form target groups; bg variant is the fast 2x10s outage profile
+  echo_health_check = {
+    enabled             = true
+    healthy_threshold   = 5
+    interval            = 30
+    matcher             = "200"
+    path                = "/echo"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    timeout             = 5
+    unhealthy_threshold = 2
+  }
+  bg_fast_health_check = merge(local.echo_health_check, { healthy_threshold = 2, interval = 10 })
 }

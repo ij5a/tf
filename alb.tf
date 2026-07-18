@@ -86,17 +86,7 @@ module "alb" {
       deregistration_delay              = 5
       load_balancing_cross_zone_enabled = true
       target_type                       = "ip"
-      health_check = {
-        enabled             = true
-        healthy_threshold   = 5
-        interval            = 30
-        matcher             = "200"
-        path                = "/echo"
-        port                = "traffic-port"
-        protocol            = "HTTP"
-        timeout             = 5
-        unhealthy_threshold = 2
-      }
+      health_check                      = local.echo_health_check
     }
   }
 }
@@ -599,17 +589,7 @@ module "alb_breakglass" {
         deregistration_delay              = 5
         load_balancing_cross_zone_enabled = true
         target_type                       = "ip"
-        health_check = {
-          enabled             = true
-          healthy_threshold   = 2
-          interval            = 10
-          matcher             = "200"
-          path                = "/echo"
-          port                = "traffic-port"
-          protocol            = "HTTP"
-          timeout             = 5
-          unhealthy_threshold = 2
-        }
+        health_check                      = local.bg_fast_health_check
       }
     },
     contains(var.services, "apigw-pr") ? {
@@ -621,17 +601,7 @@ module "alb_breakglass" {
         deregistration_delay              = 5
         load_balancing_cross_zone_enabled = true
         target_type                       = "ip"
-        health_check = {
-          enabled             = true
-          healthy_threshold   = 2
-          interval            = 10
-          matcher             = "200"
-          path                = "/echo"
-          port                = "traffic-port"
-          protocol            = "HTTP"
-          timeout             = 5
-          unhealthy_threshold = 2
-        }
+        health_check                      = local.bg_fast_health_check
       }
     } : {},
     contains(var.services, "de") ? {
@@ -643,17 +613,7 @@ module "alb_breakglass" {
         deregistration_delay              = 5
         load_balancing_cross_zone_enabled = true
         target_type                       = "ip"
-        health_check = {
-          enabled             = true
-          healthy_threshold   = 2
-          interval            = 10
-          matcher             = "200"
-          path                = "/echo"
-          port                = "traffic-port"
-          protocol            = "HTTP"
-          timeout             = 5
-          unhealthy_threshold = 2
-        }
+        health_check                      = local.bg_fast_health_check
       }
     } : {},
     var.enable_phpmyadmin ? {
@@ -667,17 +627,12 @@ module "alb_breakglass" {
         target_type                       = "ip"
         # apache+PMA needs ~30-60s to boot on Fargate Spot; 2x10s marked it unhealthy mid-boot
         # and ECS drained every task. Healthy side stays fast (2x15s), unhealthy side tolerates boot.
-        health_check = {
-          enabled             = true
+        health_check = merge(local.echo_health_check, {
           healthy_threshold   = 2
           interval            = 15
-          matcher             = "200"
-          path                = "/phpmyadmin/"
-          port                = "traffic-port"
-          protocol            = "HTTP"
-          timeout             = 5
           unhealthy_threshold = 5
-        }
+          path                = "/phpmyadmin/"
+        })
       }
     } : {}
   )

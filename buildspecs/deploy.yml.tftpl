@@ -7,6 +7,9 @@ env:
     REPOSITORY_URL: "${repository_url}"
     REPOSITORY_NAME: "${repository_name}"
     SERVICE_REPOSITORY: "${service_repository}"
+%{ if !is_spa }
+    SERVICE_NAME: "${service_name}"
+%{ endif }
 
 phases:
   pre_build:
@@ -24,7 +27,7 @@ phases:
           LATEST_TAG="$${SERVICE_REPOSITORY}-latest"
         fi
       - SHA256_DIGEST="$(aws ecr list-images --repository-name $${REPOSITORY_NAME} --no-paginate --max-results 1000 --query 'imageIds[?imageTag==`"'"$${LATEST_TAG}"'"`].imageDigest' --output text)"
-      # In prod the versioned tag is also env-prefixed (e.g. prod-spa-v6.5.402-20260406-00),
+      # In prod the versioned tag is also env-prefixed (e.g. prod-<service>-v6.5.401-20260310-00),
       # so the only filter we need is "not -latest". In non-prod we preserve the original behavior
       # of filtering out anything env-prefixed to find the bare versioned tag.
       - |
@@ -41,6 +44,7 @@ phases:
         else
           ENV_IMAGE_TAG="$${ENVIRONMENT}-$${IMAGE_TAG}"
         fi
+%{ if is_spa }
   build:
     commands:
       - echo "Got \"$${IMAGE_TAG}\"."
@@ -69,3 +73,27 @@ artifacts:
   files:
     - "**/*"
   base-directory: build
+%{ else }
+  build:
+    commands:
+      - echo "Got \"$${IMAGE_TAG}\"."
+      - echo "Using deployment tag \"$${ENV_IMAGE_TAG}\"."
+      # In prod the source tags are already env-prefixed, so the docker pull/tag/push
+      # would just be a no-op re-push of the existing tags. Skip it.
+      - |
+        if [ "$${ENVIRONMENT}" = "prod" ] || [ "$${ENVIRONMENT}" = "sandbox" ]; then
+          echo "Prod: source tags are already env-prefixed, skipping docker retag/push."
+        else
+          docker pull $${REPOSITORY_URL}:$${IMAGE_TAG}
+          docker tag $${REPOSITORY_URL}:$${IMAGE_TAG} $${REPOSITORY_URL}:$${ENV_IMAGE_TAG}
+          docker tag $${REPOSITORY_URL}:$${IMAGE_TAG} $${REPOSITORY_URL}:$${ENVIRONMENT}-$${SERVICE_REPOSITORY}-latest
+          docker push $${REPOSITORY_URL}:$${ENV_IMAGE_TAG}
+          docker push $${REPOSITORY_URL}:$${ENVIRONMENT}-$${SERVICE_REPOSITORY}-latest
+        fi
+  post_build:
+    commands:
+      - printf "[{\"name\":\"$${SERVICE_NAME}\",\"imageUri\":\"%s\"}]" $${REPOSITORY_URL}:$${ENV_IMAGE_TAG} > imagedefinitions.json
+artifacts:
+  files:
+    - imagedefinitions.json
+%{ endif }

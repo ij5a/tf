@@ -352,17 +352,13 @@ resource "aws_codebuild_project" "this" {
   }
 
   source {
-    buildspec = each.key == "spa" ? templatefile("./buildspecs/deploy-spa.yml", {
-      environment        = var.tags.environment,
-      repository_url     = data.aws_ecr_repository.this.repository_url,
-      repository_name    = data.aws_ecr_repository.this.name,
-      service_repository = var.service_repositories[each.key]
-      }) : templatefile("./buildspecs/deploy-image.yml", {
+    buildspec = templatefile("./buildspecs/deploy.yml.tftpl", {
       environment        = var.tags.environment,
       repository_url     = data.aws_ecr_repository.this.repository_url,
       repository_name    = data.aws_ecr_repository.this.name,
       service_repository = var.service_repositories[each.key]
       service_name       = each.key
+      is_spa             = each.key == "spa"
     })
     type = "CODEPIPELINE"
   }

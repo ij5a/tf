@@ -138,13 +138,7 @@ module "ecs_service" {
   force_new_deployment     = true
   propagate_tags           = "SERVICE"
 
-  capacity_provider_strategy = {
-    "FARGATE_SPOT" = {
-      "base"              = 0
-      "weight"            = 1
-      "capacity_provider" = "FARGATE_SPOT"
-    }
-  }
+  capacity_provider_strategy = local.fargate_spot_strategy
 
   task_exec_iam_statements = local.autoscaling_exec_iam_statement
 
@@ -294,10 +288,7 @@ module "ecs_service" {
     }
   }
 
-  deployment_circuit_breaker = {
-    enable   = true
-    rollback = true
-  }
+  deployment_circuit_breaker = local.ecs_circuit_breaker
 
   service_connect_configuration = {
     namespace = aws_service_discovery_private_dns_namespace.this[0].arn
@@ -518,13 +509,7 @@ module "phpmyadmin" {
   force_new_deployment     = true
   propagate_tags           = "SERVICE"
 
-  capacity_provider_strategy = {
-    "FARGATE_SPOT" = {
-      "base"              = 0
-      "weight"            = 1
-      "capacity_provider" = "FARGATE_SPOT"
-    }
-  }
+  capacity_provider_strategy = local.fargate_spot_strategy
 
   task_exec_iam_statements = concat(local.autoscaling_exec_iam_statement, [
     {
@@ -631,10 +616,7 @@ module "phpmyadmin" {
     }
   }
 
-  deployment_circuit_breaker = {
-    enable   = true
-    rollback = true
-  }
+  deployment_circuit_breaker = local.ecs_circuit_breaker
 
   service_connect_configuration = {
     namespace = aws_service_discovery_private_dns_namespace.this[0].arn
@@ -759,13 +741,7 @@ module "iso8583" {
   force_new_deployment     = true
   propagate_tags           = "SERVICE"
 
-  capacity_provider_strategy = {
-    "FARGATE_SPOT" = {
-      "base"              = 0
-      "weight"            = 1
-      "capacity_provider" = "FARGATE_SPOT"
-    }
-  }
+  capacity_provider_strategy = local.fargate_spot_strategy
 
   task_exec_iam_statements = local.autoscaling_exec_iam_statement
 
@@ -809,10 +785,7 @@ module "iso8583" {
     }
   }
 
-  deployment_circuit_breaker = {
-    enable   = true
-    rollback = true
-  }
+  deployment_circuit_breaker = local.ecs_circuit_breaker
 
   service_connect_configuration = {
     namespace = aws_service_discovery_private_dns_namespace.this[0].arn
