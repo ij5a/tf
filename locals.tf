@@ -1,6 +1,9 @@
 locals {
   is_prod = var.tags.environment == "prod"
 
+  # 5-min SAT,SUN re-zero; envs opt out with autoscaling_schedule.weekend_guard = false
+  weekend_guard_schedule = "cron(0/5 * ? * SAT,SUN *)"
+
   # dual-domain migration: run a second hostname alongside domain_name until old-name traffic is zero
   enable_additional_domain = var.enable_route53 && var.additional_domain_name != ""
 

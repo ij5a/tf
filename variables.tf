@@ -681,11 +681,11 @@ variable "service_ports" {
 }
 
 variable "autoscaling_schedule" {
-  description = "Cron schedules for ECS autoscaling (business_hours = scale up, off_hours = scale down, weekend_guard = 5-min non-prod re-zero so accidental weekend starts self-heal)"
+  description = "Cron schedules for ECS autoscaling (business_hours = scale up, off_hours = scale down) plus the weekend_guard bool - true adds a 5-min SAT,SUN re-zero action on non-prod so accidental weekend starts self-heal"
   type = object({
     business_hours = string
     off_hours      = string
-    weekend_guard  = optional(string, "cron(0/5 * ? * SAT,SUN *)")
+    weekend_guard  = optional(bool, true)
   })
   default = {
     business_hours = "cron(0 7 ? * MON-FRI *)" # 3 PM PHT

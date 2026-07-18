@@ -431,26 +431,27 @@ module "ecs_service" {
       min_capacity     = ceil(split(":", var.service_task_count[each.key])[1] / 2)
       max_capacity     = ceil(split(":", var.service_task_count[each.key])[2] / 2)
     }
-    } : {
-    business_hours = {
-      schedule         = var.autoscaling_schedule.business_hours
-      desired_capacity = split(":", var.service_task_count[each.key])[0]
-      min_capacity     = split(":", var.service_task_count[each.key])[1]
-      max_capacity     = split(":", var.service_task_count[each.key])[2]
-    },
-    off_hours = {
-      schedule         = var.autoscaling_schedule.off_hours
-      desired_capacity = 0
-      min_capacity     = 0
-      max_capacity     = 0
-    },
-    weekend_guard = {
-      schedule         = var.autoscaling_schedule.weekend_guard
-      desired_capacity = 0
-      min_capacity     = 0
-      max_capacity     = 0
-    }
-  }
+    } : merge({
+      business_hours = {
+        schedule         = var.autoscaling_schedule.business_hours
+        desired_capacity = split(":", var.service_task_count[each.key])[0]
+        min_capacity     = split(":", var.service_task_count[each.key])[1]
+        max_capacity     = split(":", var.service_task_count[each.key])[2]
+      },
+      off_hours = {
+        schedule         = var.autoscaling_schedule.off_hours
+        desired_capacity = 0
+        min_capacity     = 0
+        max_capacity     = 0
+      }
+      }, var.autoscaling_schedule.weekend_guard ? {
+      weekend_guard = {
+        schedule         = local.weekend_guard_schedule
+        desired_capacity = 0
+        min_capacity     = 0
+        max_capacity     = 0
+      }
+  } : {})
 }
 
 # phpMyAdmin dropdown servers - the PMA_* env lists join these positionally, so all fields stay equal length.
@@ -721,23 +722,24 @@ module "phpmyadmin" {
       min_capacity = 1
       max_capacity = 1
     }
-    } : {
-    business_hours = {
-      schedule     = var.autoscaling_schedule.business_hours
-      min_capacity = 1
-      max_capacity = 2
-    },
-    off_hours = {
-      schedule     = var.autoscaling_schedule.off_hours
-      min_capacity = 0
-      max_capacity = 0
-    },
-    weekend_guard = {
-      schedule     = var.autoscaling_schedule.weekend_guard
-      min_capacity = 0
-      max_capacity = 0
-    }
-  }
+    } : merge({
+      business_hours = {
+        schedule     = var.autoscaling_schedule.business_hours
+        min_capacity = 1
+        max_capacity = 2
+      },
+      off_hours = {
+        schedule     = var.autoscaling_schedule.off_hours
+        min_capacity = 0
+        max_capacity = 0
+      }
+      }, var.autoscaling_schedule.weekend_guard ? {
+      weekend_guard = {
+        schedule     = local.weekend_guard_schedule
+        min_capacity = 0
+        max_capacity = 0
+      }
+  } : {})
 }
 
 # iso8583-playground: internal Nuxt SSR load-test tool (no DB, no secrets). Idle-sized — raise cpu/memory before a load test.
@@ -856,7 +858,7 @@ module "iso8583" {
   # a load run would otherwise trip a pointless scale attempt). Keep off-hours scale-to-0 for cost.
   autoscaling_policies = {}
 
-  autoscaling_scheduled_actions = {
+  autoscaling_scheduled_actions = merge({
     business_hours = {
       schedule     = var.autoscaling_schedule.business_hours
       min_capacity = 1
@@ -866,11 +868,12 @@ module "iso8583" {
       schedule     = var.autoscaling_schedule.off_hours
       min_capacity = 0
       max_capacity = 0
-    },
+    }
+    }, var.autoscaling_schedule.weekend_guard ? {
     weekend_guard = {
-      schedule     = var.autoscaling_schedule.weekend_guard
+      schedule     = local.weekend_guard_schedule
       min_capacity = 0
       max_capacity = 0
     }
-  }
+  } : {})
 }
