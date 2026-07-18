@@ -181,14 +181,18 @@ module "aurora_mysql_v2" {
     ] : [])
   }
 
-  security_group_ingress_rules = {
-    vpc_ingress = {
-      cidr_ipv4 = try(module.vpc[0].vpc_cidr_block, var.existing_vpc_details.cidr_block)
-    }
-    twingate_ingress = {
-      cidr_ipv4 = var.twingate_vpc_cidr_block
-    }
-  }
+  security_group_ingress_rules = merge(
+    {
+      vpc_ingress = {
+        cidr_ipv4 = try(module.vpc[0].vpc_cidr_block, var.existing_vpc_details.cidr_block)
+      }
+    },
+    var.use_twingate_transit_gateway ? {
+      twingate_ingress = {
+        cidr_ipv4 = var.twingate_vpc_cidr_block
+      }
+    } : {}
+  )
 
   # pr has its own sizing vars so prod-only central overrides never apply to it.
   serverlessv2_scaling_configuration = each.key == "pr" ? var.pr_serverless_aurora_scaling_configuration : var.serverless_aurora_scaling_configuration
@@ -241,11 +245,15 @@ module "de_mysql_rds_security_group" {
   description = "Security group for the standalone MySQL RDS instance for the de service"
   vpc_id      = try(module.vpc[0].vpc_id, var.existing_vpc_details.id)
 
-  ingress_cidr_blocks = compact([
-    try(module.vpc[0].vpc_cidr_block, var.existing_vpc_details.cidr_block),
-    var.twingate_vpc_cidr_block,
-  ])
-  ingress_rules = ["mysql-tcp"]
+  # Twingate as its own rule resource: folding it into ingress_cidr_blocks would force-replace
+  # the shared rule (cidr_blocks is ForceNew) whenever the flag flips on a live SG.
+  ingress_cidr_blocks = [try(module.vpc[0].vpc_cidr_block, var.existing_vpc_details.cidr_block)]
+  ingress_rules       = ["mysql-tcp"]
+  ingress_with_cidr_blocks = var.use_twingate_transit_gateway ? [{
+    rule        = "mysql-tcp"
+    cidr_blocks = var.twingate_vpc_cidr_block
+    description = "Twingate VPC CIDR block"
+  }] : []
 }
 
 module "de_mysql_rds" {

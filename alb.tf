@@ -180,7 +180,7 @@ module "nlb" {
   vpc_id                     = try(module.vpc[0].vpc_id, var.existing_vpc_details.id)
 
   security_group_ingress_rules = merge(
-    var.use_private_nlb_for_eg ? {
+    var.use_private_nlb_for_eg && var.use_twingate_transit_gateway ? {
       "twingate" = {
         cidr_ipv4   = var.twingate_vpc_cidr_block
         description = "Twingate VPC CIDR block"

@@ -443,6 +443,12 @@ module "ecs_service" {
       desired_capacity = 0
       min_capacity     = 0
       max_capacity     = 0
+    },
+    weekend_guard = {
+      schedule         = var.autoscaling_schedule.weekend_guard
+      desired_capacity = 0
+      min_capacity     = 0
+      max_capacity     = 0
     }
   }
 }
@@ -725,6 +731,11 @@ module "phpmyadmin" {
       schedule     = var.autoscaling_schedule.off_hours
       min_capacity = 0
       max_capacity = 0
+    },
+    weekend_guard = {
+      schedule     = var.autoscaling_schedule.weekend_guard
+      min_capacity = 0
+      max_capacity = 0
     }
   }
 }
@@ -853,6 +864,11 @@ module "iso8583" {
     },
     off_hours = {
       schedule     = var.autoscaling_schedule.off_hours
+      min_capacity = 0
+      max_capacity = 0
+    },
+    weekend_guard = {
+      schedule     = var.autoscaling_schedule.weekend_guard
       min_capacity = 0
       max_capacity = 0
     }

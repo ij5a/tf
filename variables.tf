@@ -681,14 +681,15 @@ variable "service_ports" {
 }
 
 variable "autoscaling_schedule" {
-  description = "Cron schedules for ECS autoscaling (business_hours = scale up, off_hours = scale down)"
+  description = "Cron schedules for ECS autoscaling (business_hours = scale up, off_hours = scale down, weekend_guard = 5-min non-prod re-zero so accidental weekend starts self-heal)"
   type = object({
     business_hours = string
     off_hours      = string
+    weekend_guard  = optional(string, "cron(0/5 * ? * SAT,SUN *)")
   })
   default = {
-    business_hours = "cron(0 7 ? * MON-FRI *)"  # 3 PM PHT
-    off_hours      = "cron(0 18 ? * MON-FRI *)" # 2 AM PHT
+    business_hours = "cron(0 7 ? * MON-FRI *)" # 3 PM PHT
+    off_hours      = "cron(0 18 ? * * *)"      # 2 AM PHT, daily so weekend starts still scale down
   }
 }
 
@@ -784,7 +785,7 @@ variable "use_service_specs" {
 
 variable "use_twingate_transit_gateway" {
   description = "Use Twingate Transit Gateway to allow access from local network to AWS resources."
-  type        = string
+  type        = bool
   default     = false
 }
 
