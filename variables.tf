@@ -662,6 +662,11 @@ variable "service_specs" {
     eg             = "100:300"
     pr             = "200:300"
   }
+
+  validation {
+    condition     = alltrue([for v in values(var.service_specs) : can(regex("^\\d+:\\d+$", v))])
+    error_message = "Each service_specs value must be \"CPU:Memory\" with both parts numeric, e.g. \"200:300\"."
+  }
 }
 
 variable "service_ports" {
@@ -706,6 +711,16 @@ variable "service_task_count" {
     de             = "1:1:1"
     eg             = "1:1:1"
     pr             = "1:1:1"
+  }
+
+  validation {
+    condition     = alltrue([for v in values(var.service_task_count) : can(regex("^\\d+:\\d+:\\d+$", v))])
+    error_message = "Each service_task_count value must be \"Desired:Minimum:Maximum\" with all three parts numeric, e.g. \"1:1:2\"."
+  }
+
+  validation {
+    condition     = alltrue([for v in values(var.service_task_count) : try(tonumber(split(":", v)[1]) <= tonumber(split(":", v)[2]), true)])
+    error_message = "Each service_task_count value must have Minimum <= Maximum."
   }
 }
 
