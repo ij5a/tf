@@ -222,7 +222,7 @@ module "cdn" {
     } : {},
     contains(each.value, "spa") ? {
       spa = {
-        domain_name               = module.s3_bucket["spa"].s3_bucket_bucket_domain_name
+        domain_name               = module.s3_bucket["spa"].s3_bucket_bucket_regional_domain_name
         origin_access_control_key = "${var.tags.project}-${var.tags.environment}-s3-oac"
         origin_shield = {
           enabled              = true

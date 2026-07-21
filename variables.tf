@@ -59,7 +59,7 @@ variable "module_sources" {
     }
     s3_bucket = {
       source  = "terraform-aws-modules/s3-bucket/aws"
-      version = "~> 5.14.1"
+      version = "~> 5.15.1"
     }
     secrets_manager = {
       source  = "terraform-aws-modules/secrets-manager/aws"
