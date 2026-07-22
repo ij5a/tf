@@ -194,7 +194,7 @@ module "cdn" {
         }
         origin_shield = {
           enabled              = true
-          origin_shield_region = "us-east-1"
+          origin_shield_region = "sa-east-1"
         }
       }
     } : {},
@@ -216,7 +216,7 @@ module "cdn" {
         }
         origin_shield = {
           enabled              = true
-          origin_shield_region = "us-east-1"
+          origin_shield_region = "sa-east-1"
         }
       }
     } : {},
@@ -226,7 +226,7 @@ module "cdn" {
         origin_access_control_key = "${var.tags.project}-${var.tags.environment}-s3-oac"
         origin_shield = {
           enabled              = true
-          origin_shield_region = "us-east-1"
+          origin_shield_region = "sa-east-1"
         }
       }
     } : {}
