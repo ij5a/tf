@@ -15,6 +15,10 @@ enable_waf                   = true
 waf_managed_rules_block_mode = true
 use_public_nlb_for_eg        = true
 
+# Encrypt the CloudFront→ALB and ALB→ECS hops (TLS on the full client path).
+enable_https_origin = true
+enable_tls_to_ecs   = true
+
 # Account hardening + threat detection + alerting.
 enable_account_security  = true
 enable_guardduty         = true

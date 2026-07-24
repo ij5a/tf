@@ -20,6 +20,10 @@ enable_pagerduty             = false
 enable_vpn_alarms            = false
 use_twingate_transit_gateway = false
 
+# TLS on the CloudFront→ALB and ALB→ECS hops stays on even in dev.
+enable_https_origin = true
+enable_tls_to_ecs   = true
+
 # Smallest Aurora footprint (Serverless v2, scale to zero off-hours).
 aurora_instance_count = 1
 serverless_aurora_scaling_configuration = {
