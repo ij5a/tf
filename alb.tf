@@ -640,6 +640,7 @@ module "alb_breakglass" {
             actions = [{
               forward = { target_group_key = "apigw-pr" }
             }]
+
             # one condition type per block (AND = separate entries) - the provider rejects combined blocks
             conditions = [
               {

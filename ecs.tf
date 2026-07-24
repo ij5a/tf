@@ -333,11 +333,19 @@ module "ecs_service" {
     },
     var.enable_tls_to_ecs && contains(local.tls_lb_services, each.key) ? {
       tls-proxy = {
-        enable_cloudwatch_logging = var.enable_cloudwatch_logging
-        cloudwatch_log_group_name = "${var.tags.project}-${var.tags.environment}-${each.key}"
-        essential                 = true
-        image                     = var.tls_proxy_image
-        readonlyRootFilesystem    = false
+        create_cloudwatch_log_group = false
+        essential                   = true
+        image                       = var.tls_proxy_image
+        readonlyRootFilesystem      = false
+
+        logConfiguration = {
+          logDriver = "awslogs"
+          options = {
+            awslogs-region        = var.region
+            awslogs-group         = "${var.tags.project}-${var.tags.environment}-${each.key}"
+            awslogs-stream-prefix = "ecs"
+          }
+        }
 
         command = [
           "/bin/sh", "-c",

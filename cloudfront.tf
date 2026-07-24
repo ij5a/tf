@@ -160,9 +160,12 @@ module "cdn" {
   enabled             = true
   price_class         = "PriceClass_All"
   web_acl_id          = aws_wafv2_web_acl.web_acl["${var.tags.project}-${var.tags.environment}"].arn
+
+  # In-use VPC origins reject protocol updates (CannotUpdateEntityWhileInUse), so the https flip
+  # swaps the origin key: create the https twin, repoint the distribution, then drop the old origin.
   vpc_origin = {
-    alb = {
-      name                   = "${var.tags.project}-${var.tags.environment}-alb"
+    (var.enable_https_origin ? "alb-https" : "alb") = {
+      name                   = "${var.tags.project}-${var.tags.environment}-alb${var.enable_https_origin ? "-https" : ""}"
       arn                    = module.alb["${var.tags.project}-${var.tags.environment}"].arn
       http_port              = 80
       https_port             = 443
@@ -192,7 +195,7 @@ module "cdn" {
       api = {
         domain_name = var.enable_https_origin ? var.domain_name : module.alb["${var.tags.project}-${var.tags.environment}"].dns_name
         vpc_origin_config = {
-          vpc_origin_key           = "alb"
+          vpc_origin_key           = var.enable_https_origin ? "alb-https" : "alb"
           origin_keepalive_timeout = 60
           origin_read_timeout      = 60
         }
