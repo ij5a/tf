@@ -30,3 +30,6 @@ serverless_aurora_scaling_configuration = {
   min_capacity = 0
   max_capacity = 1
 }
+
+# Smallest Valkey nodes outside prod.
+elasticache_node_type = "cache.t4g.micro"

@@ -779,6 +779,12 @@ variable "use_legacy_redis" {
   default     = false
 }
 
+variable "elasticache_node_type" {
+  description = "Node type for the Valkey replication groups"
+  type        = string
+  default     = "cache.t4g.small"
+}
+
 variable "use_legacy_endpoints" {
   description = "Switch to use legacy endpoints. The legacy_endpoints variable must be set."
   type        = bool

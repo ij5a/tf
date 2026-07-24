@@ -26,7 +26,7 @@ module "elasticache" {
   replication_group_id        = "${var.tags.project}-${var.tags.environment}-${each.key}"
   engine                      = "valkey"
   engine_version              = "8.2"
-  node_type                   = "cache.t4g.small"
+  node_type                   = var.elasticache_node_type
   transit_encryption_enabled  = true
   auth_token                  = module.valkey_auth_token[each.key].secret_string
   maintenance_window          = "sun:05:00-sun:09:00"
