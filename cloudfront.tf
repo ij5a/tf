@@ -289,6 +289,7 @@ module "cdn" {
 
 # Standalone phpMyAdmin front door. Separate from module.cdn (apigw): single default behavior to
 # the dedicated internal ALB, gated by its own CF-WAF. Interim - destroys when enable_standalone_phpmyadmin flips.
+# ponytail: PriceClass_100 - interim internal tool gated to one Twingate IP, not the global client front door.
 module "cdn_phpmyadmin" {
   source  = var.module_sources.cloudfront.source
   version = var.module_sources.cloudfront.version
@@ -298,7 +299,7 @@ module "cdn_phpmyadmin" {
   aliases     = [var.domain_name]
   comment     = "phpMyAdmin - ${var.domain_name}"
   enabled     = true
-  price_class = "PriceClass_100" # ponytail: interim internal tool gated to one Twingate IP, not the global client front door
+  price_class = "PriceClass_100"
   web_acl_id  = aws_wafv2_web_acl.phpmyadmin_standalone[0].arn
 
   # Empty map suppresses the module's default OAC (named literally "s3" — account-global, so the

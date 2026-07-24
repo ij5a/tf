@@ -150,10 +150,6 @@ resource "aws_dms_replication_config" "serverless" {
       MaxFullLoadSubTasks = var.dms_migration_details.full_load_settings.max_full_load_sub_tasks
     }
 
-    # ValidationSettings = {
-    #   EnableValidation = true
-    # }
-
     Logging = {
       EnableLogging    = true
       EnableLogContext = true

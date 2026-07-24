@@ -28,14 +28,16 @@ variable "name" {
   default     = "rds-scheduler-for-client-env"
 }
 
+# AWS cron runs in UTC; this is 3 PM PHT.
 variable "cron_start_time" {
   description = "Cron expression for the start time of the RDS instances"
   type        = string
-  default     = "cron(0 7 ? * MON-FRI *)" # 3 PM PHT
+  default     = "cron(0 7 ? * MON-FRI *)"
 }
 
+# AWS cron runs in UTC; this is 12 AM PHT.
 variable "cron_stop_time" {
   description = "Cron expression for the stop time of the RDS instances"
   type        = string
-  default     = "cron(0 16 ? * MON-FRI *)" # 12 AM PHT
+  default     = "cron(0 16 ? * MON-FRI *)"
 }

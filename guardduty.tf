@@ -91,12 +91,13 @@ resource "aws_cloudwatch_event_rule" "guardduty_findings" {
   name        = "${var.tags.project}-${var.tags.environment}-guardduty-findings"
   description = "Capture GuardDuty findings for Slack notification"
 
+  # severity >= 4 captures Medium (4-6.9), High (7-8.9), and Critical (9-10) findings
   event_pattern = jsonencode({
     source      = ["aws.guardduty"]
     detail-type = ["GuardDuty Finding"]
     detail = {
       severity = [
-        { numeric = [">=", 4] } # Medium (4-6.9), High (7-8.9), Critical (9-10)
+        { numeric = [">=", 4] }
       ]
     }
   })

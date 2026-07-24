@@ -447,6 +447,8 @@ module "ecs_service" {
 
 # phpMyAdmin dropdown servers - the PMA_* env lists join these positionally, so all fields stay equal length.
 # Reader entry only when a reader exists: at aurora_instance_count = 1 the -ro endpoint silently routes to the writer.
+# The legacy shared MySQL entry is non-prod only; its TLS turns on with require_secure_transport
+# (CA fetched by the container entrypoint).
 locals {
   pma_servers = concat(
     [{
@@ -481,7 +483,6 @@ locals {
       ssl_verify = "0"
       ssl_ca     = ""
     }] : [],
-    # Legacy shared MySQL, non-prod only. TLS on when require_secure_transport (CA fetched by the container entrypoint).
     !local.is_prod ? [{
       host       = "legacy-mysql.cluster-aaaaexample0.sa-east-1.rds.amazonaws.com"
       port       = "3306"
@@ -631,10 +632,10 @@ module "phpmyadmin" {
     }]
   }
 
+  # apigw ALB TG when enable_alb, else the standalone TG. Same apigw TG for enable_alb envs - no diff.
   load_balancer = merge(
     {
       "phpmyadmin" = {
-        # apigw ALB TG when enable_alb, else the standalone TG. Same apigw TG for enable_alb envs - no diff.
         target_group_arn = coalesce(try(aws_lb_target_group.phpmyadmin[0].arn, null), try(aws_lb_target_group.phpmyadmin_standalone[0].arn, null))
         container_name   = "phpmyadmin"
         container_port   = 80
@@ -730,9 +731,9 @@ module "iso8583" {
   version                  = var.module_sources.ecs_service.version
   count                    = var.enable_ecs && var.enable_iso8583_playground ? 1 : 0
   cluster_arn              = module.ecs[0].arn
-  cpu                      = 512
+  cpu                      = 1024
   enable_execute_command   = true
-  memory                   = 1024
+  memory                   = 2048
   name                     = "iso8583"
   family                   = "${var.tags.project}-${var.tags.environment}-iso8583"
   desired_count            = 1
@@ -747,9 +748,9 @@ module "iso8583" {
 
   container_definitions = {
     "iso8583" = {
-      cpu                                    = 512
-      memory                                 = 1024
-      memoryReservation                      = 1024
+      cpu                                    = 1024
+      memory                                 = 2048
+      memoryReservation                      = 2048
       enable_cloudwatch_logging              = var.enable_cloudwatch_logging
       cloudwatch_log_group_name              = "${var.tags.project}-${var.tags.environment}-iso8583"
       cloudwatch_log_group_retention_in_days = var.cloudwatch_log_group_retention_in_days

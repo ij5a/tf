@@ -405,10 +405,11 @@ resource "aws_lb_listener_rule" "iso8583" {
 # breaks (2026-07-16 incident). Reachable only from the CloudFront origin-facing prefix list AND
 # with the x-origin-verify secret CloudFront injects; everything else gets the fixed 403.
 # Off by default in every env; operator steps in cf-vpc-origin-breakglass.md.
+# No special chars: ALB rule values treat * and ? as wildcards.
 resource "random_password" "breakglass_origin_verify" {
   count   = local.enable_breakglass ? 1 : 0
   length  = 32
-  special = false # ALB rule values treat * and ? as wildcards
+  special = false
 }
 
 module "alb_breakglass" {
@@ -469,13 +470,14 @@ module "alb_breakglass" {
     enabled = true
   } : null
 
+  # ssl_policy pinned — the module default is TLS1.3-only, which CloudFront cannot negotiate
+  # to an origin.
   listeners = {
     https = {
       port            = 443
       protocol        = "HTTPS"
       certificate_arn = module.acm_cert[0].cert_arn
-      # module default is TLS1.3-only, which CloudFront cannot negotiate to an origin
-      ssl_policy = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+      ssl_policy      = "ELBSecurityPolicy-TLS13-1-2-2021-06"
 
       fixed_response = {
         content_type = "text/plain"
@@ -578,7 +580,9 @@ module "alb_breakglass" {
     }
   }
 
-  # fast health checks (2x10s) - during an outage every minute of time-to-healthy counts
+  # fast health checks (2x10s) - during an outage every minute of time-to-healthy counts.
+  # phpMyAdmin overrides: apache+PMA needs ~30-60s to boot on Fargate Spot — 2x10s marked it
+  # unhealthy mid-boot and ECS drained every task; healthy stays fast, unhealthy tolerates boot.
   target_groups = merge(
     {
       apigw-central = {
@@ -625,8 +629,6 @@ module "alb_breakglass" {
         deregistration_delay              = 5
         load_balancing_cross_zone_enabled = true
         target_type                       = "ip"
-        # apache+PMA needs ~30-60s to boot on Fargate Spot; 2x10s marked it unhealthy mid-boot
-        # and ECS drained every task. Healthy side stays fast (2x15s), unhealthy side tolerates boot.
         health_check = merge(local.echo_health_check, {
           healthy_threshold   = 2
           interval            = 15
