@@ -59,26 +59,30 @@ module "high_usage_alarm" {
   }
 }
 
+# per-service zero-task alarm; prod-only because dev/qa clusters disable Container Insights
+# (metric absent) and scale to zero off-hours by design
 module "low_usage_alarm" {
-  for_each            = var.enable_cloudwatch_alarms ? toset(["ecs-taskcount"]) : toset([])
+  for_each            = var.enable_cloudwatch_alarms && var.enable_ecs && !var.enable_standalone_phpmyadmin && local.is_prod && local.container_insights != "disabled" ? toset(local.ecs_services_no_spa) : toset([])
   source              = var.module_sources.cloudwatch.source
   version             = var.module_sources.cloudwatch.version
-  alarm_name          = "${var.tags.project}-${var.tags.environment}-low-${each.key}-alarm"
+  alarm_name          = "${var.tags.project}-${var.tags.environment}-low-ecs-taskcount-${each.key}-alarm"
+  alarm_description   = "ECS service ${each.key} at zero running tasks for 3m"
   comparison_operator = "LessThanOrEqualToThreshold"
   evaluation_periods  = 3
   datapoints_to_alarm = 3
   threshold           = 0
   period              = 60
   unit                = null
-  namespace           = "AWS/ECS"
-  metric_name         = "TaskCount"
-  statistic           = "Average"
+  namespace           = "ECS/ContainerInsights"
+  metric_name         = "RunningTaskCount"
+  statistic           = "Minimum"
   alarm_actions       = var.enable_slack_notifications ? [module.notify_slack["alerts"].slack_topic_arn] : []
   ok_actions          = var.enable_slack_notifications ? [module.notify_slack["alerts"].slack_topic_arn] : []
   treat_missing_data  = "notBreaching"
 
   dimensions = {
     ClusterName = "${var.tags.project}-${var.tags.environment}"
+    ServiceName = each.key
   }
 }
 

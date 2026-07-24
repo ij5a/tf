@@ -17,7 +17,7 @@ module "ecs" {
 
   setting = [{
     "name" : "containerInsights",
-    "value" : coalesce(var.container_insights, local.is_prod ? "enhanced" : "enabled")
+    "value" : local.container_insights
   }]
 
   cluster_capacity_providers = ["FARGATE", "FARGATE_SPOT"]
