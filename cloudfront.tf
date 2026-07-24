@@ -161,21 +161,36 @@ module "cdn" {
   price_class         = "PriceClass_All"
   web_acl_id          = aws_wafv2_web_acl.web_acl["${var.tags.project}-${var.tags.environment}"].arn
 
-  # In-use VPC origins reject protocol updates (CannotUpdateEntityWhileInUse), so the https flip
-  # swaps the origin key: create the https twin, repoint the distribution, then drop the old origin.
-  vpc_origin = {
-    (var.enable_https_origin ? "alb-https" : "alb") = {
-      name                   = "${var.tags.project}-${var.tags.environment}-alb${var.enable_https_origin ? "-https" : ""}"
+  # In-use VPC origins reject updates AND deletes (CannotUpdate/DeleteEntityWhileInUse), and tofu
+  # orders the old origin's destroy before the distribution repoint — so the https flip declares an
+  # https twin NEXT TO the old origin instead of replacing it. Drop the old `alb` origins in one
+  # cleanup commit after every env has flipped.
+  vpc_origin = merge({
+    alb = {
+      name                   = "${var.tags.project}-${var.tags.environment}-alb"
       arn                    = module.alb["${var.tags.project}-${var.tags.environment}"].arn
       http_port              = 80
       https_port             = 443
-      origin_protocol_policy = var.enable_https_origin ? "https-only" : "http-only"
+      origin_protocol_policy = "http-only"
       origin_ssl_protocols = {
         items    = ["TLSv1.2"]
         quantity = 1
       }
     }
-  }
+    },
+    var.enable_https_origin ? {
+      alb-https = {
+        name                   = "${var.tags.project}-${var.tags.environment}-alb-https"
+        arn                    = module.alb["${var.tags.project}-${var.tags.environment}"].arn
+        http_port              = 80
+        https_port             = 443
+        origin_protocol_policy = "https-only"
+        origin_ssl_protocols = {
+          items    = ["TLSv1.2"]
+          quantity = 1
+        }
+      }
+  } : {})
 
   origin_access_control = contains(each.value, "spa") ? {
     "${var.tags.project}-${var.tags.environment}-s3-oac" = {
