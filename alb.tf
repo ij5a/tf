@@ -13,6 +13,8 @@ module "alb" {
   subnets                    = try(module.vpc[0].private_subnets, var.existing_vpc_details.private_subnet_ids)
   vpc_id                     = try(module.vpc[0].vpc_id, var.existing_vpc_details.id)
 
+  # http + https both admit the CloudFront managed prefix list — it also matches VPC-origin ENI
+  # traffic (proven live on the :80 rule).
   security_group_ingress_rules = {
     http = {
       prefix_list_id = data.aws_ec2_managed_prefix_list.cf.id
@@ -20,6 +22,13 @@ module "alb" {
       from_port      = 80
       ip_protocol    = "tcp"
       to_port        = 80
+    }
+    https = {
+      prefix_list_id = data.aws_ec2_managed_prefix_list.cf.id
+      description    = "CloudFront managed prefix list"
+      from_port      = 443
+      ip_protocol    = "tcp"
+      to_port        = 443
     }
   }
 
@@ -33,6 +42,15 @@ module "alb" {
         to_port     = var.service_ports["apigw-central"]
       }
     },
+    var.enable_tls_to_ecs ? {
+      tls_sidecars = {
+        cidr_ipv4   = try(module.vpc[0].vpc_cidr_block, var.existing_vpc_details.cidr_block)
+        description = "ECS - TLS sidecars"
+        from_port   = 8443
+        ip_protocol = "tcp"
+        to_port     = 8443
+      }
+    } : {},
     contains(var.services, "de") ? {
       de = {
         cidr_ipv4   = try(module.vpc[0].vpc_cidr_block, var.existing_vpc_details.cidr_block)
@@ -68,7 +86,9 @@ module "alb" {
     enabled = true
   } : null
 
-  listeners = {
+  # The :443 listener pins ssl_policy explicitly — the module default is TLS1.3-only, which
+  # CloudFront cannot negotiate to an origin.
+  listeners = merge({
     apigw-central = {
       port     = 80
       protocol = "HTTP"
@@ -76,9 +96,20 @@ module "alb" {
         target_group_key = "apigw-central"
       }
     }
-  }
+    },
+    var.enable_acm ? {
+      apigw-central-https = {
+        port            = 443
+        protocol        = "HTTPS"
+        certificate_arn = module.acm_cert[0].cert_arn
+        ssl_policy      = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+        forward = {
+          target_group_key = var.enable_tls_to_ecs ? "apigw-central-tls" : "apigw-central"
+        }
+      }
+  } : {})
 
-  target_groups = {
+  target_groups = merge({
     apigw-central = {
       port                              = var.service_ports["apigw-central"]
       protocol                          = "HTTP"
@@ -88,7 +119,18 @@ module "alb" {
       target_type                       = "ip"
       health_check                      = local.echo_health_check
     }
-  }
+    },
+    var.enable_tls_to_ecs ? {
+      apigw-central-tls = {
+        port                              = 8443
+        protocol                          = "HTTPS"
+        create_attachment                 = false
+        deregistration_delay              = 5
+        load_balancing_cross_zone_enabled = true
+        target_type                       = "ip"
+        health_check                      = merge(local.echo_health_check, { protocol = "HTTPS" })
+      }
+  } : {})
 }
 
 resource "aws_lb_target_group" "this" {
@@ -392,6 +434,112 @@ resource "aws_lb_listener_rule" "iso8583" {
   }
 
   # Bare path redirects to the slash form instead of 404ing on apigw.
+  condition {
+    path_pattern {
+      values = ["/iso8583-playground/*", "/iso8583-playground"]
+    }
+  }
+
+  depends_on = [module.alb, aws_lb_target_group.iso8583]
+}
+
+# HTTPS (:443) side of the apigw ALB. The listener lives in module.alb above; the rules below
+# mirror the :80 set so both listeners route identically during the TLS rollout.
+resource "aws_lb_target_group" "this_tls" {
+  for_each    = var.enable_alb && var.enable_tls_to_ecs ? toset([for service in var.services : service if service == "apigw-pr" || service == "de"]) : toset([])
+  name        = "${var.tags.project}-${var.tags.environment}-${each.key}-tls"
+  port        = 8443
+  protocol    = "HTTPS"
+  target_type = "ip"
+  vpc_id      = try(module.vpc[0].vpc_id, var.existing_vpc_details.id)
+
+  health_check {
+    enabled             = true
+    healthy_threshold   = 5
+    interval            = 30
+    matcher             = "200"
+    path                = "/echo"
+    port                = "traffic-port"
+    protocol            = "HTTPS"
+    timeout             = 5
+    unhealthy_threshold = 2
+  }
+
+  depends_on = [module.alb]
+}
+
+resource "aws_lb_listener_rule" "host_based_weighted_routing_https" {
+  for_each     = var.enable_alb && var.enable_acm ? toset([for service in var.services : service if service == "apigw-pr" || service == "de"]) : toset([])
+  listener_arn = module.alb["${var.tags.project}-${var.tags.environment}"].listeners["apigw-central-https"].arn
+  priority     = each.key == "apigw-pr" ? 10 : 20
+
+  action {
+    type             = "forward"
+    target_group_arn = var.enable_tls_to_ecs ? aws_lb_target_group.this_tls[each.key].arn : aws_lb_target_group.this[each.key].arn
+  }
+
+  dynamic "condition" {
+    for_each = each.key == "apigw-pr" ? [1] : []
+    content {
+      path_pattern {
+        values = var.enable_external_processor ? [
+          "/api/v1/login",
+          "/api/v1/refreshToken",
+          "/api/v1/issuer",
+          "/api/v1/issuer/${var.issuer_code}",
+          "/api/v1/transactions*",
+          ] : [
+          "/api/v1/login",
+          "/api/v1/refreshToken",
+        ]
+      }
+    }
+  }
+
+  dynamic "condition" {
+    for_each = each.key == "de" ? [1] : []
+    content {
+      path_pattern {
+        values = [
+          "/decision",
+          "/update"
+        ]
+      }
+    }
+  }
+
+  depends_on = [module.alb, aws_lb_target_group.this, aws_lb_target_group.this_tls]
+}
+
+resource "aws_lb_listener_rule" "phpmyadmin_https" {
+  count        = var.enable_alb && var.enable_acm && var.enable_phpmyadmin ? 1 : 0
+  listener_arn = module.alb["${var.tags.project}-${var.tags.environment}"].listeners["apigw-central-https"].arn
+  priority     = 100
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.phpmyadmin[0].arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/phpmyadmin/*"]
+    }
+  }
+
+  depends_on = [module.alb, aws_lb_target_group.phpmyadmin]
+}
+
+resource "aws_lb_listener_rule" "iso8583_https" {
+  count        = var.enable_alb && var.enable_acm && var.enable_iso8583_playground ? 1 : 0
+  listener_arn = module.alb["${var.tags.project}-${var.tags.environment}"].listeners["apigw-central-https"].arn
+  priority     = 110
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.iso8583[0].arn
+  }
+
   condition {
     path_pattern {
       values = ["/iso8583-playground/*", "/iso8583-playground"]

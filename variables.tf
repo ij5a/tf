@@ -804,6 +804,24 @@ variable "use_twingate_transit_gateway" {
   default     = false
 }
 
+variable "enable_https_origin" {
+  description = "Serve the CloudFront -> ALB origin hop over HTTPS. Flip per env only after the :443 listener exists there."
+  type        = bool
+  default     = false
+}
+
+variable "enable_tls_to_ecs" {
+  description = "Terminate TLS in an nginx sidecar on the ALB-fronted services and shift their target groups to HTTPS :8443."
+  type        = bool
+  default     = false
+}
+
+variable "tls_proxy_image" {
+  description = "Docker image for the TLS-terminating nginx sidecar"
+  type        = string
+  default     = "333333333333.dkr.ecr.sa-east-1.amazonaws.com/tools/nginx:1.30.4-alpine"
+}
+
 variable "use_private_nlb_for_eg" {
   description = "Use private NLB for EG service only."
   type        = bool

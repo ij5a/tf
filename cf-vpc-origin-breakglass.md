@@ -14,8 +14,9 @@ Normal (flag off):
 flowchart LR
     V[Viewer] --> CF["CloudFront + WAF"]
     CF -->|"api behaviors via VPC origin"| VO["VPC origin (the AWS layer that broke 2026-07-16)"]
-    VO --> ALB["Internal ALB :80"]
-    ALB --> ECS["ECS: apigw-central / apigw-pr / de / phpmyadmin"]
+    VO -->|"HTTPS :443 with enable_https_origin, else HTTP :80"| ALB["Internal ALB"]
+    ALB -->|"HTTPS :8443 nginx sidecar with enable_tls_to_ecs, else HTTP"| ECS["ECS: apigw-central / apigw-pr / de"]
+    ALB -->|"HTTP (no sidecar)"| PMA["ECS: phpmyadmin"]
 ```
 
 Break-glass (flag on):
@@ -50,6 +51,7 @@ flowchart LR
 
 ## Notes
 
+- The bg path terminates TLS at the public ALB and forwards plain HTTP to the app containers — the TLS sidecar (`enable_tls_to_ecs`) only serves the normal-path :443 listener.
 - QA-trio envs may be scaled to 0 off-hours (bg target groups come up empty) — this is mostly a prod lever.
 - If the CloudFront control plane is also down, the behavior repoint stalls (the bg ALB still builds); direct header-authed access to `bg.<domain>` is the last resort.
 - `iso8583-playground` paths 404 during break-glass (dev-only load-test tool). The bg ALB has no CloudWatch alarms, and request-count autoscaling keeps tracking the main ALB.

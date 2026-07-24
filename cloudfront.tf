@@ -166,7 +166,7 @@ module "cdn" {
       arn                    = module.alb["${var.tags.project}-${var.tags.environment}"].arn
       http_port              = 80
       https_port             = 443
-      origin_protocol_policy = "http-only"
+      origin_protocol_policy = var.enable_https_origin ? "https-only" : "http-only"
       origin_ssl_protocols = {
         items    = ["TLSv1.2"]
         quantity = 1
@@ -183,10 +183,14 @@ module "cdn" {
     }
   } : {}
 
+  # With https origin, the api entry's domain_name switches to var.domain_name — CloudFront must
+  # cert-match the origin domain, and the ALB cert can never cover *.elb.amazonaws.com.
+  # The break-glass api-public origin stays declared alongside the api origin while the flag is
+  # on, so reverting is a pure behavior flip — no 15-20 min VPC-origin recreate.
   origin = merge(
     contains(each.value, "apigw-central") || contains(each.value, "apigw-pr") ? {
       api = {
-        domain_name = module.alb["${var.tags.project}-${var.tags.environment}"].dns_name
+        domain_name = var.enable_https_origin ? var.domain_name : module.alb["${var.tags.project}-${var.tags.environment}"].dns_name
         vpc_origin_config = {
           vpc_origin_key           = "alb"
           origin_keepalive_timeout = 60
@@ -198,8 +202,6 @@ module "cdn" {
         }
       }
     } : {},
-    # break-glass custom origin. The api origin + vpc_origin above stay declared while this is
-    # active, so reverting is a pure behavior flip - no 15-20 min VPC-origin recreate.
     (contains(each.value, "apigw-central") || contains(each.value, "apigw-pr")) && local.enable_breakglass ? {
       api-public = {
         domain_name = "bg.${local.breakglass_domain}"

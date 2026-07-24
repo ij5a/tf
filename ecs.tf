@@ -120,6 +120,43 @@ locals {
 
 }
 
+# Self-signed cert for the ALB->ECS TLS sidecars. The ALB never validates target certs, so
+# self-signed is the functionally correct ceiling; the key lives in state (encrypted S3 backend).
+# 10-year validity is the deliberate ceiling — rotation = new secret version + redeploy.
+locals {
+  tls_lb_services = ["apigw-central", "apigw-pr", "de"]
+}
+
+resource "tls_private_key" "alb_to_ecs" {
+  count     = var.enable_tls_to_ecs ? 1 : 0
+  algorithm = "RSA"
+  rsa_bits  = 2048
+}
+
+resource "tls_self_signed_cert" "alb_to_ecs" {
+  count           = var.enable_tls_to_ecs ? 1 : 0
+  private_key_pem = tls_private_key.alb_to_ecs[0].private_key_pem
+
+  subject {
+    common_name = var.domain_name
+  }
+
+  validity_period_hours = 87600
+  allowed_uses          = ["key_encipherment", "digital_signature", "server_auth"]
+}
+
+module "alb_tls_cert_secret" {
+  source      = var.module_sources.secrets_manager.source
+  version     = var.module_sources.secrets_manager.version
+  count       = var.enable_tls_to_ecs ? 1 : 0
+  name_prefix = "${var.tags.project}-${var.tags.environment}-alb-tls-"
+  description = "Self-signed cert + key for the ALB->ECS TLS sidecars"
+  secret_string = jsonencode({
+    cert = tls_self_signed_cert.alb_to_ecs[0].cert_pem
+    key  = tls_private_key.alb_to_ecs[0].private_key_pem
+  })
+}
+
 # CPU + memory combinations must match valid Fargate pairs:
 # https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-cpu-memory-error.html
 module "ecs_service" {
@@ -140,7 +177,14 @@ module "ecs_service" {
 
   capacity_provider_strategy = local.fargate_spot_strategy
 
-  task_exec_iam_statements = local.autoscaling_exec_iam_statement
+  task_exec_iam_statements = concat(local.autoscaling_exec_iam_statement, var.enable_tls_to_ecs && contains(local.tls_lb_services, each.key) ? [
+    {
+      sid       = "TlsSidecarCertSecret"
+      effect    = "Allow"
+      actions   = ["secretsmanager:GetSecretValue"]
+      resources = [module.alb_tls_cert_secret[0].secret_arn]
+    }
+  ] : [])
 
   tasks_iam_role_statements = [
     {
@@ -168,7 +212,7 @@ module "ecs_service" {
     }
   ]
 
-  container_definitions = {
+  container_definitions = merge({
     (each.key) = {
       cpu                       = var.use_service_specs ? split(":", var.service_specs[each.key])[0] : null
       memory                    = var.use_service_specs ? split(":", var.service_specs[each.key])[1] : null
@@ -286,7 +330,46 @@ module "ecs_service" {
         startPeriod = 30
       }
     }
-  }
+    },
+    var.enable_tls_to_ecs && contains(local.tls_lb_services, each.key) ? {
+      tls-proxy = {
+        enable_cloudwatch_logging = var.enable_cloudwatch_logging
+        cloudwatch_log_group_name = "${var.tags.project}-${var.tags.environment}-${each.key}"
+        essential                 = true
+        image                     = var.tls_proxy_image
+        readonlyRootFilesystem    = false
+
+        command = [
+          "/bin/sh", "-c",
+          "printf '%s' \"$TLS_CERT\" > /tmp/tls.crt && printf '%s' \"$TLS_KEY\" > /tmp/tls.key && printf 'pid /tmp/nginx.pid;\\nerror_log /dev/stderr;\\nevents {}\\nhttp { access_log off; server { listen 8443 ssl; ssl_certificate /tmp/tls.crt; ssl_certificate_key /tmp/tls.key; ssl_protocols TLSv1.2 TLSv1.3; ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384; ssl_prefer_server_ciphers on; location / { proxy_pass http://127.0.0.1:${var.service_ports[each.key]}; proxy_http_version 1.1; proxy_set_header Host $http_host; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto https; proxy_read_timeout 60s; } } }\\n' > /tmp/nginx.conf && exec nginx -c /tmp/nginx.conf -g 'daemon off;'"
+        ]
+
+        secrets = [
+          {
+            name      = "TLS_CERT"
+            valueFrom = "${module.alb_tls_cert_secret[0].secret_arn}:cert::"
+          },
+          {
+            name      = "TLS_KEY"
+            valueFrom = "${module.alb_tls_cert_secret[0].secret_arn}:key::"
+          }
+        ]
+
+        portMappings = [{
+          name          = "tls-proxy"
+          containerPort = 8443
+          protocol      = "tcp"
+        }]
+
+        healthCheck = {
+          command     = ["CMD-SHELL", "nc -z localhost 8443 || exit 1"]
+          interval    = 10
+          retries     = 3
+          timeout     = 2
+          startPeriod = 10
+        }
+      }
+  } : {})
 
   deployment_circuit_breaker = local.ecs_circuit_breaker
 
@@ -303,6 +386,8 @@ module "ecs_service" {
     }]
   }
 
+  # Second (break-glass ALB) and third (TLS-sidecar TG) entries are additional registrations of
+  # the same service — an in-place service update with a rolling redeploy, never a replace.
   load_balancer = merge(
     strcontains(each.key, "apigw") || each.key == "de" || (each.key == "eg" && var.enable_nlb) ? {
       (each.key) = {
@@ -311,12 +396,18 @@ module "ecs_service" {
         container_port   = var.service_ports[each.key]
       }
     } : {},
-    # second registration into the break-glass ALB; in-place service update, rolling redeploy
     local.enable_breakglass && (strcontains(each.key, "apigw") || each.key == "de") ? {
       "${each.key}-bg" = {
         target_group_arn = module.alb_breakglass[0].target_groups[each.key].arn
         container_name   = each.key
         container_port   = var.service_ports[each.key]
+      }
+    } : {},
+    var.enable_tls_to_ecs && contains(local.tls_lb_services, each.key) ? {
+      "${each.key}-tls" = {
+        target_group_arn = each.key == "apigw-central" ? module.alb["${var.tags.project}-${var.tags.environment}"].target_groups["apigw-central-tls"].arn : aws_lb_target_group.this_tls[each.key].arn
+        container_name   = "tls-proxy"
+        container_port   = 8443
       }
     } : {}
   )
@@ -332,6 +423,15 @@ module "ecs_service" {
       cidr_ipv4   = try(module.vpc[0].vpc_cidr_block, var.existing_vpc_details.cidr_block)
     }
     },
+    var.enable_tls_to_ecs && contains(local.tls_lb_services, each.key) ? {
+      vpc_ingress_8443 = {
+        from_port   = 8443
+        to_port     = 8443
+        ip_protocol = "tcp"
+        description = "${var.tags.project}-${var.tags.environment}-vpc TLS sidecar"
+        cidr_ipv4   = try(module.vpc[0].vpc_cidr_block, var.existing_vpc_details.cidr_block)
+      }
+    } : {},
     var.use_private_nlb_for_eg && var.use_twingate_transit_gateway && each.key == "eg" ? {
       "twingate_ingress_${var.service_ports["eg"]}" = {
         from_port   = var.service_ports["eg"]
