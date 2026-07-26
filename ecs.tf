@@ -313,7 +313,7 @@ module "ecs_service" {
       healthCheck = each.key != "api-reconciler" ? {
         command = each.key != "eg" ? [
           "CMD-SHELL",
-          "curl -f http://localhost:${var.service_ports[each.key]}/echo || exit 1"
+          "curl -f http://localhost:${var.service_ports[each.key]}${var.enable_gateway_deep_echo && strcontains(each.key, "apigw") ? "/healthz" : "/echo"} || exit 1"
           ] : [
           "CMD-SHELL",
           "nc -zv localhost ${var.service_ports[each.key]} || exit 1"

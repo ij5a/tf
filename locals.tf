@@ -43,4 +43,7 @@ locals {
     unhealthy_threshold = 2
   }
   bg_fast_health_check = merge(local.echo_health_check, { healthy_threshold = 2, interval = 10 })
+
+  # 3 not 5 so a new gateway task can go healthy faster than a down backend gets it dropped
+  gateway_healthy_threshold = var.enable_gateway_deep_echo ? 3 : 5
 }

@@ -822,6 +822,12 @@ variable "enable_tls_to_ecs" {
   default     = false
 }
 
+variable "enable_gateway_deep_echo" {
+  description = "Point the apigw-* container health check at the gateway-local /healthz so their /echo is free to proxy through to the backend. Only flip once that env's apigw-*.yaml has a healthz pipeline."
+  type        = bool
+  default     = false
+}
+
 variable "tls_proxy_image" {
   description = "Docker image for the TLS-terminating nginx sidecar"
   type        = string

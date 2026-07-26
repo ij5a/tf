@@ -117,7 +117,7 @@ module "alb" {
       deregistration_delay              = 5
       load_balancing_cross_zone_enabled = true
       target_type                       = "ip"
-      health_check                      = local.echo_health_check
+      health_check                      = merge(local.echo_health_check, { healthy_threshold = local.gateway_healthy_threshold })
     }
     },
     var.enable_tls_to_ecs ? {
@@ -128,7 +128,7 @@ module "alb" {
         deregistration_delay              = 5
         load_balancing_cross_zone_enabled = true
         target_type                       = "ip"
-        health_check                      = merge(local.echo_health_check, { protocol = "HTTPS" })
+        health_check                      = merge(local.echo_health_check, { protocol = "HTTPS", healthy_threshold = local.gateway_healthy_threshold })
       }
   } : {})
 }
@@ -143,7 +143,7 @@ resource "aws_lb_target_group" "this" {
 
   health_check {
     enabled             = true
-    healthy_threshold   = 5
+    healthy_threshold   = each.key == "apigw-pr" ? local.gateway_healthy_threshold : 5
     interval            = 30
     matcher             = "200"
     path                = "/echo"
@@ -455,7 +455,7 @@ resource "aws_lb_target_group" "this_tls" {
 
   health_check {
     enabled             = true
-    healthy_threshold   = 5
+    healthy_threshold   = each.key == "apigw-pr" ? local.gateway_healthy_threshold : 5
     interval            = 30
     matcher             = "200"
     path                = "/echo"
