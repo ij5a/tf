@@ -1,5 +1,6 @@
 # Route 53 health checker IPs — published by AWS so dashboard uptime probes aren't blocked by WAF
 data "aws_ip_ranges" "route53_healthchecks" {
+  count    = var.enable_waf && var.enable_cloudfront ? 1 : 0
   regions  = ["global"]
   services = ["route53_healthchecks"]
 }
@@ -122,7 +123,7 @@ resource "aws_wafv2_ip_set" "route53_healthchecks" {
   description        = "Route 53 health checker IPs allowed to probe ${local.fargate_probe_paths[0]} and peers"
   scope              = "CLOUDFRONT"
   ip_address_version = "IPV4"
-  addresses          = data.aws_ip_ranges.route53_healthchecks.cidr_blocks
+  addresses          = data.aws_ip_ranges.route53_healthchecks[0].cidr_blocks
 }
 
 resource "aws_wafv2_web_acl" "web_acl" {
