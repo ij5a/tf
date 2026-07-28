@@ -619,6 +619,17 @@ variable "services" {
   ]
 }
 
+variable "eg_extra_count" {
+  description = "Extra parallel eg instances for load tests (eg-2..eg-N+1 on ports 5003+, sharing eg's image and config); 0 disables"
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.eg_extra_count >= 0 && floor(var.eg_extra_count) == var.eg_extra_count
+    error_message = "eg_extra_count must be a whole number >= 0."
+  }
+}
+
 variable "service_overall_cpu_mem_combination" {
   description = "Overall CPU and memory combination for the services. See: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-cpu-memory-error.html"
   type = object({

@@ -3,7 +3,7 @@
 locals {
   dashboard_key       = "${var.tags.project}-${var.tags.environment}"
   cluster_name        = "${var.tags.project}-${var.tags.environment}"
-  ecs_services_no_spa = [for s in var.services : s if s != "spa"]
+  ecs_services_no_spa = [for s in local.services : s if s != "spa"]
   cache_services      = [for s in var.services : s if s == "central" || s == "de"]
 
   log_group_names = [

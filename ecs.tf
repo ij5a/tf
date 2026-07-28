@@ -70,15 +70,26 @@ locals {
 }
 
 locals {
+  # eg_extra_count stamps out eg-2..eg-N+1 on ports 5003+, sharing eg's image and config files;
+  # env_vars_final appends EG_PORT so each instance binds its own port.
+  eg_extras = [for i in range(var.eg_extra_count) : "eg-${i + 2}"]
+  eg_family = concat(["eg"], local.eg_extras)
+  services  = concat(var.services, local.eg_extras)
+
+  service_ports        = merge(var.service_ports, { for i, s in local.eg_extras : s => var.service_ports["eg"] + i + 1 })
+  service_specs        = merge(var.service_specs, { for s in local.eg_extras : s => var.service_specs["eg"] })
+  service_task_count   = merge(var.service_task_count, { for s in local.eg_extras : s => var.service_task_count["eg"] })
+  service_repositories = merge(var.service_repositories, { for s in local.eg_extras : s => var.service_repositories["eg"] })
+
   dotenv_services = [
-    for service in var.services : service
+    for service in local.services : service
     if service != "pr" && service != "authenticator" && service != "spa" && !strcontains(service, "apigw")
   ]
   env_vars = {
     for service in local.dotenv_services : service =>
     try(
       [
-        for line in split("\n", file("service-configs/${var.tags.project}-${var.tags.environment}/${service == "api-reconciler" ? "api" : service}.env")) :
+        for line in split("\n", file("service-configs/${var.tags.project}-${var.tags.environment}/${service == "api-reconciler" ? "api" : contains(local.eg_extras, service) ? "eg" : service}.env")) :
         {
           name = split("=", line)[0]
           value = replace(
@@ -114,6 +125,18 @@ locals {
       concat(
         [for v in vars : v if v.name != "DB_HOST" && v.name != "DB_PASSWORD"],
         local.de_mysql_rds_env_overrides
+      ) : vars
+    )
+  }
+
+  # Extras run from eg's .env; EG_PORT is filtered then appended (ECS rejects duplicates) for env
+  # parity - the actual listener port comes from the entrypoint jq patch (json wins over env).
+  env_vars_final = {
+    for service, vars in local.env_vars_with_de_overrides : service => (
+      contains(local.eg_extras, service) ?
+      concat(
+        [for v in vars : v if v.name != "EG_PORT"],
+        [{ name = "EG_PORT", value = tostring(local.service_ports[service]) }]
       ) : vars
     )
   }
@@ -162,16 +185,16 @@ module "alb_tls_cert_secret" {
 module "ecs_service" {
   source                   = var.module_sources.ecs_service.source
   version                  = var.module_sources.ecs_service.version
-  for_each                 = var.enable_ecs && !var.enable_standalone_phpmyadmin ? toset([for service in var.services : service if service != "spa"]) : toset([])
+  for_each                 = var.enable_ecs && !var.enable_standalone_phpmyadmin ? toset([for service in local.services : service if service != "spa"]) : toset([])
   cluster_arn              = module.ecs[0].arn
   cpu                      = var.service_overall_cpu_mem_combination.cpu
   enable_execute_command   = true
   memory                   = var.service_overall_cpu_mem_combination.mem
   name                     = each.key
   family                   = "${var.tags.project}-${var.tags.environment}-${each.key}"
-  desired_count            = split(":", var.service_task_count[each.key])[0]
-  autoscaling_min_capacity = split(":", var.service_task_count[each.key])[1]
-  autoscaling_max_capacity = split(":", var.service_task_count[each.key])[2]
+  desired_count            = split(":", local.service_task_count[each.key])[0]
+  autoscaling_min_capacity = split(":", local.service_task_count[each.key])[1]
+  autoscaling_max_capacity = split(":", local.service_task_count[each.key])[2]
   force_new_deployment     = true
   propagate_tags           = "SERVICE"
 
@@ -214,21 +237,21 @@ module "ecs_service" {
 
   container_definitions = merge({
     (each.key) = {
-      cpu                       = var.use_service_specs ? split(":", var.service_specs[each.key])[0] : null
-      memory                    = var.use_service_specs ? split(":", var.service_specs[each.key])[1] : null
-      memoryReservation         = var.use_service_specs ? split(":", var.service_specs[each.key])[1] : null
+      cpu                       = var.use_service_specs ? split(":", local.service_specs[each.key])[0] : null
+      memory                    = var.use_service_specs ? split(":", local.service_specs[each.key])[1] : null
+      memoryReservation         = var.use_service_specs ? split(":", local.service_specs[each.key])[1] : null
       enable_cloudwatch_logging = var.enable_cloudwatch_logging
       cloudwatch_log_group_name = "${var.tags.project}-${var.tags.environment}-${each.key}"
       essential                 = true
-      image                     = var.tags.environment == "dev" ? "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com/acme-platform-image:${var.service_repositories[each.key]}-latest" : "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com/acme-platform-image:${var.tags.environment}-${var.service_repositories[each.key]}-latest"
+      image                     = var.tags.environment == "dev" ? "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com/acme-platform-image:${local.service_repositories[each.key]}-latest" : "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com/acme-platform-image:${var.tags.environment}-${local.service_repositories[each.key]}-latest"
       readonlyRootFilesystem    = false
 
       environment = each.key != "pr" && each.key != "authenticator" && !strcontains(each.key, "apigw") ? concat(
-        local.env_vars_with_de_overrides[each.key],
+        local.env_vars_final[each.key],
         [
           {
             name  = "ENV_SHA512",
-            value = filesha512("service-configs/${var.tags.project}-${var.tags.environment}/${each.key == "api-reconciler" ? "api" : each.key}.env")
+            value = filesha512("service-configs/${var.tags.project}-${var.tags.environment}/${each.key == "api-reconciler" ? "api" : contains(local.eg_extras, each.key) ? "eg" : each.key}.env")
           },
           {
             name  = each.key == "api-reconciler" ? "ACME_API_RECONCILER" : null
@@ -236,7 +259,7 @@ module "ecs_service" {
           },
           {
             name  = "MEM_LIMIT",
-            value = var.use_service_specs ? split(":", var.service_specs[each.key])[1] * 1024 * 1024 : var.service_overall_cpu_mem_combination.mem * 1024 * 1024
+            value = var.use_service_specs ? split(":", local.service_specs[each.key])[1] * 1024 * 1024 : var.service_overall_cpu_mem_combination.mem * 1024 * 1024
           }
         ]) : each.key == "acme-eg" ? [
         {
@@ -257,7 +280,7 @@ module "ecs_service" {
         },
         {
           name  = "MEM_LIMIT",
-          value = var.use_service_specs ? split(":", var.service_specs[each.key])[1] * 1024 * 1024 : var.service_overall_cpu_mem_combination.mem * 1024 * 1024
+          value = var.use_service_specs ? split(":", local.service_specs[each.key])[1] * 1024 * 1024 : var.service_overall_cpu_mem_combination.mem * 1024 * 1024
         }
         ] : [
         {
@@ -286,16 +309,16 @@ module "ecs_service" {
         },
         {
           name  = "MEM_LIMIT",
-          value = var.use_service_specs ? split(":", var.service_specs[each.key])[1] * 1024 * 1024 : var.service_overall_cpu_mem_combination.mem * 1024 * 1024
+          value = var.use_service_specs ? split(":", local.service_specs[each.key])[1] * 1024 * 1024 : var.service_overall_cpu_mem_combination.mem * 1024 * 1024
         }
       ]
 
-      entrypoint = each.key != "pr" && each.key != "authenticator" && each.key != "eg" && !strcontains(each.key, "apigw") ? [
+      entrypoint = each.key != "pr" && each.key != "authenticator" && !contains(local.eg_family, each.key) && !strcontains(each.key, "apigw") ? [
         "/bin/bash", "-c",
         "aws secretsmanager get-secret-value --secret-id ${var.tags.project}-${var.tags.environment} --region ${var.region} --query SecretString --output text | jq -r '.\"encrypt.key\"' | base64 -d > /var/app/config/encrypt.key && aws secretsmanager get-secret-value --secret-id ${var.tags.project}-${var.tags.environment} --region ${var.region} --query SecretString --output text | jq -r '.\"encrypt.pub\"' | base64 -d > /var/app/config/encrypt.pub && ${(var.require_secure_transport && contains(["api", "api-reconciler", "de"], each.key)) ? "curl -fsSL https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem -o /var/app/config/rds-ca-bundle.pem && " : ""}/sbin/tini -sv -- /var/app/current/entrypoint.sh"
-        ] : each.key == "eg" ? [
+        ] : contains(local.eg_family, each.key) ? [
         "/bin/bash", "-c",
-        "aws secretsmanager get-secret-value --secret-id ${var.tags.project}-${var.tags.environment} --region ${var.region} --query SecretString --output text | jq -r '.\"encrypt.key\"' | base64 -d > /var/app/config/encrypt.key && aws secretsmanager get-secret-value --secret-id ${var.tags.project}-${var.tags.environment} --region ${var.region} --query SecretString --output text | jq -r '.\"encrypt.pub\"' | base64 -d > /var/app/config/encrypt.pub && aws secretsmanager get-secret-value --secret-id ${module.secrets_manager[each.key].secret_name} --region ${var.region} --query SecretString --output text > /var/app/config/${local.config_names[each.key]} && cp -r /var/app/current/config/eg-stream-${local.client_code}/* /var/app/config/ && /sbin/tini -sv -- /var/app/current/entrypoint.sh"
+        "aws secretsmanager get-secret-value --secret-id ${var.tags.project}-${var.tags.environment} --region ${var.region} --query SecretString --output text | jq -r '.\"encrypt.key\"' | base64 -d > /var/app/config/encrypt.key && aws secretsmanager get-secret-value --secret-id ${var.tags.project}-${var.tags.environment} --region ${var.region} --query SecretString --output text | jq -r '.\"encrypt.pub\"' | base64 -d > /var/app/config/encrypt.pub && aws secretsmanager get-secret-value --secret-id ${module.secrets_manager["eg"].secret_name} --region ${var.region} --query SecretString --output text ${contains(local.eg_extras, each.key) ? "| jq '(.[] | select(has(\"upstream\")) | .upstream.port) = ${local.service_ports[each.key]}' " : ""}> /var/app/config/${local.config_names["eg"]} && cp -r /var/app/current/config/eg-stream-${local.client_code}/* /var/app/config/ && /sbin/tini -sv -- /var/app/current/entrypoint.sh"
         ] : strcontains(each.key, "apigw") ? [
         "/bin/sh", "-c",
         "aws secretsmanager get-secret-value --secret-id ${var.tags.project}-${var.tags.environment} --region ${var.region} --query SecretString --output text | jq -r '.\"jwtSecret.pub\"' | base64 -d > /var/app/config/jwtSecret.pub && aws secretsmanager get-secret-value --secret-id ${module.secrets_manager[each.key].secret_name} --region ${var.region} --query SecretString --output text > /var/app/config/${local.config_names[each.key]} && ./entrypoint.sh"
@@ -306,17 +329,17 @@ module "ecs_service" {
 
       portMappings = [{
         name          = each.key
-        containerPort = var.service_ports[each.key]
+        containerPort = local.service_ports[each.key]
         protocol      = "tcp"
       }]
 
       healthCheck = each.key != "api-reconciler" ? {
-        command = each.key != "eg" ? [
+        command = !contains(local.eg_family, each.key) ? [
           "CMD-SHELL",
-          "curl -f http://localhost:${var.service_ports[each.key]}${var.enable_gateway_deep_echo && strcontains(each.key, "apigw") ? "/healthz" : "/echo"} || exit 1"
+          "curl -f http://localhost:${local.service_ports[each.key]}${var.enable_gateway_deep_echo && strcontains(each.key, "apigw") ? "/healthz" : "/echo"} || exit 1"
           ] : [
           "CMD-SHELL",
-          "nc -zv localhost ${var.service_ports[each.key]} || exit 1"
+          "nc -zv localhost ${local.service_ports[each.key]} || exit 1"
         ]
         interval    = 10
         retries     = 3
@@ -349,7 +372,7 @@ module "ecs_service" {
 
         command = [
           "/bin/sh", "-c",
-          "printf '%s' \"$TLS_CERT\" > /tmp/tls.crt && printf '%s' \"$TLS_KEY\" > /tmp/tls.key && printf 'pid /tmp/nginx.pid;\\nerror_log /dev/stderr;\\nevents {}\\nhttp { access_log off; server { listen 8443 ssl; ssl_certificate /tmp/tls.crt; ssl_certificate_key /tmp/tls.key; ssl_protocols TLSv1.2 TLSv1.3; ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384; ssl_prefer_server_ciphers on; location / { proxy_pass http://127.0.0.1:${var.service_ports[each.key]}; proxy_http_version 1.1; proxy_set_header Host $http_host; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto https; proxy_read_timeout 60s; } } }\\n' > /tmp/nginx.conf && exec nginx -c /tmp/nginx.conf -g 'daemon off;'"
+          "printf '%s' \"$TLS_CERT\" > /tmp/tls.crt && printf '%s' \"$TLS_KEY\" > /tmp/tls.key && printf 'pid /tmp/nginx.pid;\\nerror_log /dev/stderr;\\nevents {}\\nhttp { access_log off; server { listen 8443 ssl; ssl_certificate /tmp/tls.crt; ssl_certificate_key /tmp/tls.key; ssl_protocols TLSv1.2 TLSv1.3; ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384; ssl_prefer_server_ciphers on; location / { proxy_pass http://127.0.0.1:${local.service_ports[each.key]}; proxy_http_version 1.1; proxy_set_header Host $http_host; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto https; proxy_read_timeout 60s; } } }\\n' > /tmp/nginx.conf && exec nginx -c /tmp/nginx.conf -g 'daemon off;'"
         ]
 
         secrets = [
@@ -385,7 +408,7 @@ module "ecs_service" {
     namespace = aws_service_discovery_private_dns_namespace.this[0].arn
     service = [{
       client_alias = {
-        port     = var.service_ports[each.key]
+        port     = local.service_ports[each.key]
         dns_name = each.key
       }
 
@@ -401,14 +424,14 @@ module "ecs_service" {
       (each.key) = {
         target_group_arn = each.key == "apigw-central" ? module.alb["${var.tags.project}-${var.tags.environment}"].target_groups[each.key].arn : each.key == "eg" ? module.nlb["${var.tags.project}-${var.tags.environment}"].target_groups[each.key].arn : aws_lb_target_group.this[each.key].arn
         container_name   = each.key
-        container_port   = var.service_ports[each.key]
+        container_port   = local.service_ports[each.key]
       }
     } : {},
     local.enable_breakglass && (strcontains(each.key, "apigw") || each.key == "de") ? {
       "${each.key}-bg" = {
         target_group_arn = module.alb_breakglass[0].target_groups[each.key].arn
         container_name   = each.key
-        container_port   = var.service_ports[each.key]
+        container_port   = local.service_ports[each.key]
       }
     } : {},
     var.enable_tls_to_ecs && contains(local.tls_lb_services, each.key) ? {
@@ -423,9 +446,9 @@ module "ecs_service" {
   subnet_ids = try(module.vpc[0].private_subnets, var.existing_vpc_details.private_subnet_ids)
 
   security_group_ingress_rules = merge({
-    "vpc_ingress_${var.service_ports[each.key]}" = {
-      from_port   = var.service_ports[each.key]
-      to_port     = var.service_ports[each.key]
+    "vpc_ingress_${local.service_ports[each.key]}" = {
+      from_port   = local.service_ports[each.key]
+      to_port     = local.service_ports[each.key]
       ip_protocol = "tcp"
       description = "${var.tags.project}-${var.tags.environment}-vpc"
       cidr_ipv4   = try(module.vpc[0].vpc_cidr_block, var.existing_vpc_details.cidr_block)
@@ -441,9 +464,9 @@ module "ecs_service" {
       }
     } : {},
     var.use_private_nlb_for_eg && var.use_twingate_transit_gateway && each.key == "eg" ? {
-      "twingate_ingress_${var.service_ports["eg"]}" = {
-        from_port   = var.service_ports["eg"]
-        to_port     = var.service_ports["eg"]
+      "twingate_ingress_${local.service_ports["eg"]}" = {
+        from_port   = local.service_ports["eg"]
+        to_port     = local.service_ports["eg"]
         ip_protocol = "tcp"
         description = "Twingate VPC CIDR block"
         cidr_ipv4   = var.twingate_vpc_cidr_block
@@ -451,8 +474,8 @@ module "ecs_service" {
     } : {},
     var.use_public_nlb_for_eg && each.key == "eg" ? {
       for idx, ip in var.allowed_ip_addresses : "allowed_ip_${idx}" => {
-        from_port   = var.service_ports["eg"]
-        to_port     = var.service_ports["eg"]
+        from_port   = local.service_ports["eg"]
+        to_port     = local.service_ports["eg"]
         ip_protocol = "tcp"
         description = "Allowed IP: ${ip}"
         cidr_ipv4   = ip
@@ -460,8 +483,8 @@ module "ecs_service" {
     } : {},
     var.use_public_nlb_for_eg && each.key == "eg" ? {
       "twingate" = {
-        from_port   = var.service_ports["eg"]
-        to_port     = var.service_ports["eg"]
+        from_port   = local.service_ports["eg"]
+        to_port     = local.service_ports["eg"]
         ip_protocol = "tcp"
         description = "Twingate Public IP"
         cidr_ipv4   = var.twingate_ip
@@ -520,22 +543,22 @@ module "ecs_service" {
   autoscaling_scheduled_actions = local.is_prod ? {
     business_hours = {
       schedule         = var.autoscaling_schedule.business_hours
-      desired_capacity = split(":", var.service_task_count[each.key])[0]
-      min_capacity     = split(":", var.service_task_count[each.key])[1]
-      max_capacity     = split(":", var.service_task_count[each.key])[2]
+      desired_capacity = split(":", local.service_task_count[each.key])[0]
+      min_capacity     = split(":", local.service_task_count[each.key])[1]
+      max_capacity     = split(":", local.service_task_count[each.key])[2]
     },
     off_hours = {
       schedule         = var.autoscaling_schedule.off_hours
-      desired_capacity = ceil(split(":", var.service_task_count[each.key])[0] / 2)
-      min_capacity     = ceil(split(":", var.service_task_count[each.key])[1] / 2)
-      max_capacity     = ceil(split(":", var.service_task_count[each.key])[2] / 2)
+      desired_capacity = ceil(split(":", local.service_task_count[each.key])[0] / 2)
+      min_capacity     = ceil(split(":", local.service_task_count[each.key])[1] / 2)
+      max_capacity     = ceil(split(":", local.service_task_count[each.key])[2] / 2)
     }
     } : merge({
       business_hours = {
         schedule         = var.autoscaling_schedule.business_hours
-        desired_capacity = split(":", var.service_task_count[each.key])[0]
-        min_capacity     = split(":", var.service_task_count[each.key])[1]
-        max_capacity     = split(":", var.service_task_count[each.key])[2]
+        desired_capacity = split(":", local.service_task_count[each.key])[0]
+        min_capacity     = split(":", local.service_task_count[each.key])[1]
+        max_capacity     = split(":", local.service_task_count[each.key])[2]
       },
       off_hours = {
         schedule         = var.autoscaling_schedule.off_hours
@@ -866,10 +889,16 @@ module "iso8583" {
       image                                  = var.iso8583_playground_image
       readonlyRootFilesystem                 = false
 
+      # EG_HOSTS lists the eg family so a taskdef change re-rolls the playground whenever
+      # eg_extra_count changes - a task only reads ServiceConnect names at launch.
       environment = [
         {
           name  = "NUXT_APP_BASE_URL"
           value = "/iso8583-playground/"
+        },
+        {
+          name  = "EG_HOSTS"
+          value = join(",", [for s in local.eg_family : "${s}:${local.service_ports[s]}"])
         }
       ]
 
