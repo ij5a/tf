@@ -188,15 +188,20 @@ locals {
         query  = "${local.log_query_sources} | fields @timestamp, level\n| filter level >= 50\n| stats count() as errors"
       }
     }] : [],
-    var.enable_ecs && var.enable_cloudwatch_logging && contains(var.services, "central") ? [{
-      type   = "log"
+    # Metric (default_value 0) instead of a log count — renders 0 on quiet days instead of "No data found".
+    var.enable_cloudwatch_alarms && var.enable_cloudwatch_logging && contains(var.services, "central") ? [{
+      type   = "metric"
       width  = 6
       height = 4
       properties = {
         title  = "Data replication failures (central)"
-        view   = "table"
+        view   = "timeSeries"
         region = var.region
-        query  = "SOURCE '${var.tags.project}-${var.tags.environment}-central' | fields @timestamp\n| filter @message like /(?i)data replication (failure|error)/\n| stats count() as failures"
+        stat   = "Sum"
+        period = 300
+        metrics = [
+          ["acme/${var.tags.project}-${var.tags.environment}", "DataReplicationFailures", { label = "failures" }]
+        ]
       }
     }] : [],
     var.enable_cloudwatch_alarms && length(local.alarm_arns) > 0 ? [{
@@ -559,9 +564,9 @@ locals {
             region = var.region
             view   = "timeSeries"
             metrics = [
-              [{ expression = "SEARCH('{AWS/ElastiCache,CacheClusterId} MetricName=\"CPUUtilization\" \"${local.cluster_name}-${svc}\"', 'Average', 300)", label = "CPU %" }],
-              [{ expression = "SEARCH('{AWS/ElastiCache,CacheClusterId} MetricName=\"EngineCPUUtilization\" \"${local.cluster_name}-${svc}\"', 'Average', 300)", label = "Engine CPU %" }],
-              [{ expression = "SEARCH('{AWS/ElastiCache,CacheClusterId} MetricName=\"DatabaseMemoryUsagePercentage\" \"${local.cluster_name}-${svc}\"', 'Average', 300)", label = "Memory %" }]
+              [{ expression = "SEARCH('{AWS/ElastiCache,CacheClusterId} MetricName=\"CPUUtilization\" ${local.cluster_name}-${svc}', 'Average', 300)", label = "CPU %" }],
+              [{ expression = "SEARCH('{AWS/ElastiCache,CacheClusterId} MetricName=\"EngineCPUUtilization\" ${local.cluster_name}-${svc}', 'Average', 300)", label = "Engine CPU %" }],
+              [{ expression = "SEARCH('{AWS/ElastiCache,CacheClusterId} MetricName=\"DatabaseMemoryUsagePercentage\" ${local.cluster_name}-${svc}', 'Average', 300)", label = "Memory %" }]
             ]
           }
         },
@@ -574,9 +579,9 @@ locals {
             region = var.region
             view   = "timeSeries"
             metrics = [
-              [{ expression = "SEARCH('{AWS/ElastiCache,CacheClusterId} MetricName=\"NetworkBytesIn\" \"${local.cluster_name}-${svc}\"', 'Average', 300)", label = "Bytes in" }],
-              [{ expression = "SEARCH('{AWS/ElastiCache,CacheClusterId} MetricName=\"NetworkBytesOut\" \"${local.cluster_name}-${svc}\"', 'Average', 300)", label = "Bytes out" }],
-              [{ expression = "SEARCH('{AWS/ElastiCache,CacheClusterId} MetricName=\"CurrConnections\" \"${local.cluster_name}-${svc}\"', 'Average', 300)", label = "Connections", yAxis = "right" }]
+              [{ expression = "SEARCH('{AWS/ElastiCache,CacheClusterId} MetricName=\"NetworkBytesIn\" ${local.cluster_name}-${svc}', 'Average', 300)", label = "Bytes in" }],
+              [{ expression = "SEARCH('{AWS/ElastiCache,CacheClusterId} MetricName=\"NetworkBytesOut\" ${local.cluster_name}-${svc}', 'Average', 300)", label = "Bytes out" }],
+              [{ expression = "SEARCH('{AWS/ElastiCache,CacheClusterId} MetricName=\"CurrConnections\" ${local.cluster_name}-${svc}', 'Average', 300)", label = "Connections", yAxis = "right" }]
             ]
           }
         },
@@ -589,8 +594,8 @@ locals {
             region = var.region
             view   = "timeSeries"
             metrics = [
-              [{ expression = "SEARCH('{AWS/ElastiCache,CacheClusterId} MetricName=\"CacheHits\" \"${local.cluster_name}-${svc}\"', 'Sum', 300)", label = "Hits" }],
-              [{ expression = "SEARCH('{AWS/ElastiCache,CacheClusterId} MetricName=\"CacheMisses\" \"${local.cluster_name}-${svc}\"', 'Sum', 300)", label = "Misses" }]
+              [{ expression = "SEARCH('{AWS/ElastiCache,CacheClusterId} MetricName=\"CacheHits\" ${local.cluster_name}-${svc}', 'Sum', 300)", label = "Hits" }],
+              [{ expression = "SEARCH('{AWS/ElastiCache,CacheClusterId} MetricName=\"CacheMisses\" ${local.cluster_name}-${svc}', 'Sum', 300)", label = "Misses" }]
             ]
           }
         }
@@ -617,8 +622,8 @@ locals {
         view    = "timeSeries"
         stacked = true
         metrics = [
-          ["AWS/WAFV2", "AllowedRequests", "WebACL", "${local.dashboard_key}-web-acls", "Region", "Global", "Rule", "ALL", { label = "Allowed" }],
-          ["AWS/WAFV2", "BlockedRequests", "WebACL", "${local.dashboard_key}-web-acls", "Region", "Global", "Rule", "ALL", { label = "Blocked" }]
+          ["AWS/WAFV2", "AllowedRequests", "WebACL", "${local.dashboard_key}-web-acls", "Rule", "ALL", { label = "Allowed" }],
+          ["AWS/WAFV2", "BlockedRequests", "WebACL", "${local.dashboard_key}-web-acls", "Rule", "ALL", { label = "Blocked" }]
         ]
         stat   = "Sum"
         period = 300
