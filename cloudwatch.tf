@@ -139,12 +139,12 @@ module "route53_health_check_alarm" {
   }
 }
 
-# Critical: client and Acme cannot sync data when "Data Replication Failure" appears in central logs.
+# Critical: client and Acme cannot sync data when a Data Replication Failure/Error line appears in central logs.
 resource "aws_cloudwatch_log_metric_filter" "data_replication_failure" {
   count          = var.enable_cloudwatch_alarms && var.enable_cloudwatch_logging && contains(var.services, "central") ? 1 : 0
   name           = "${var.tags.project}-${var.tags.environment}-data-replication-failure"
   log_group_name = "${var.tags.project}-${var.tags.environment}-central"
-  pattern        = "\"Data Replication Failure\""
+  pattern        = "%[Dd]ata\\s[Rr]eplication\\s[Ff]ailure|[Dd]ata\\s[Rr]eplication\\s[Ee]rror%"
 
   metric_transformation {
     name          = "DataReplicationFailures"
@@ -163,7 +163,7 @@ module "data_replication_failure_alarm" {
   source              = var.module_sources.cloudwatch.source
   version             = var.module_sources.cloudwatch.version
   alarm_name          = "${var.tags.project}-${var.tags.environment}-data-replication-failure-alarm"
-  alarm_description   = "Critical: 'Data Replication Failure' detected in central logs. Client and Acme cannot sync data."
+  alarm_description   = "Critical: data replication failure/error detected in central logs. Client and Acme cannot sync data."
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 1
   datapoints_to_alarm = 1

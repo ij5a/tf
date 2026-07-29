@@ -196,7 +196,7 @@ locals {
         title  = "Data replication failures (central)"
         view   = "table"
         region = var.region
-        query  = "SOURCE '${var.tags.project}-${var.tags.environment}-central' | fields @timestamp\n| filter @message like /Data Replication Failure/\n| stats count() as failures"
+        query  = "SOURCE '${var.tags.project}-${var.tags.environment}-central' | fields @timestamp\n| filter @message like /(?i)data replication (failure|error)/\n| stats count() as failures"
       }
     }] : [],
     var.enable_cloudwatch_alarms && length(local.alarm_arns) > 0 ? [{
@@ -788,7 +788,7 @@ locals {
         title  = "Recent data replication failures (central)"
         region = var.region
         view   = "table"
-        query  = "SOURCE '${var.tags.project}-${var.tags.environment}-central' | fields @timestamp, msg, err.code, err.message, extproc\n| filter @message like /Data Replication Failure/\n| sort @timestamp desc\n| limit 50"
+        query  = "SOURCE '${var.tags.project}-${var.tags.environment}-central' | fields @timestamp, msg, err.code, err.message, extproc\n| filter @message like /(?i)data replication (failure|error)/\n| sort @timestamp desc\n| limit 50"
       }
     }] : []
   )
