@@ -191,6 +191,11 @@ module "aurora_mysql_v2" {
       twingate_ingress = {
         cidr_ipv4 = var.twingate_vpc_cidr_block
       }
+    } : {},
+    var.enable_aurora_legacy_vpc_ingress ? {
+      legacy_vpc_ingress = {
+        cidr_ipv4 = var.legacy_db_redis_server_details.vpc.cidr_block
+      }
     } : {}
   )
 

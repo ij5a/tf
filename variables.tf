@@ -340,6 +340,12 @@ variable "enable_pr_serverless_aurora" {
   default     = false
 }
 
+variable "enable_aurora_legacy_vpc_ingress" {
+  description = "Open the Aurora security group to the legacy VPC CIDR (legacy_db_redis_server_details.vpc.cidr_block). Cutover-phase flag for envs whose apps still run in the legacy VPC while Aurora lives in the new one; drop after the apps migrate."
+  type        = bool
+  default     = false
+}
+
 variable "de_mysql_rds_config" {
   description = "Sizing config for the standalone MySQL RDS instance created when enable_de_mysql_rds is true."
   type = object({
