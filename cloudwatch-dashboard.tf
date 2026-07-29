@@ -760,7 +760,7 @@ locals {
         title  = "Recent errors"
         region = var.region
         view   = "table"
-        query  = "${local.log_query_sources} | fields @timestamp, name, msg, err.code, err.message, url, extproc, processor, executionLogic\n| filter level >= 50\n| sort @timestamp desc\n| limit 100"
+        query  = "${local.log_query_sources} | fields @timestamp, name, level, msg, err.code, err.message, url, extproc, processor, executionLogic\n| filter level >= 50\n| sort @timestamp desc\n| limit 100"
       }
     }] : [],
     local.logs_enabled ? [{
@@ -771,7 +771,7 @@ locals {
         title  = "Top error messages"
         region = var.region
         view   = "table"
-        query  = "${local.log_query_sources} | fields msg\n| filter level >= 50\n| stats count() as errors by msg, err.code\n| sort errors desc\n| limit 20"
+        query  = "${local.log_query_sources} | fields msg, level\n| filter level >= 50\n| stats count() as errors by msg, err.code, level\n| sort errors desc\n| limit 20"
       }
     }] : [],
     local.logs_enabled ? [{
@@ -793,7 +793,7 @@ locals {
         title  = "Recent data replication failures (central)"
         region = var.region
         view   = "table"
-        query  = "SOURCE '${var.tags.project}-${var.tags.environment}-central' | fields @timestamp, msg, err.code, err.message, extproc\n| filter @message like /(?i)data replication (failure|error)/\n| sort @timestamp desc\n| limit 50"
+        query  = "SOURCE '${var.tags.project}-${var.tags.environment}-central' | fields @timestamp, level, msg, err.code, err.message, extproc\n| filter @message like /(?i)data replication (failure|error)/\n| sort @timestamp desc\n| limit 50"
       }
     }] : []
   )
