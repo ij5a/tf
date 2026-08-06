@@ -9,6 +9,7 @@ resource "aws_dms_endpoint" "source" {
   database_name = var.dms_migration_details.source_db_name
   username      = var.dms_source_db_username
   password      = var.dms_source_db_password
+  ssl_mode      = var.dms_migration_details.ssl_mode
 }
 
 resource "aws_dms_endpoint" "target" {
@@ -22,6 +23,7 @@ resource "aws_dms_endpoint" "target" {
   database_name = var.dms_migration_details.target_db_name
   username      = var.dms_target_db_username
   password      = var.dms_target_db_password
+  ssl_mode      = var.dms_migration_details.ssl_mode
 }
 
 resource "aws_iam_role" "dms_service_role" {

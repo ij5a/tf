@@ -130,6 +130,7 @@ variable "dms_migration_details" {
     )
     source_engine_name = optional(string, "aurora")
     target_engine_name = optional(string, "aurora-serverless")
+    ssl_mode           = optional(string, "none")
     compute_config = optional(object({
       min_capacity_units = number
       max_capacity_units = number
