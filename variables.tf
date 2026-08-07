@@ -347,6 +347,18 @@ variable "enable_aurora_legacy_vpc_ingress" {
   default     = false
 }
 
+variable "enable_aurora_statement_log_masking" {
+  description = "Master switch for CloudWatch data protection masking on the Aurora statement log groups (audit, slowquery). Data protection bills $0.12/GB scanned at ingestion. Turning it off deletes the policies and stops masking new events only; events already written stay masked. Masking is display-time — the raw value stays stored and logs:Unmask reveals it."
+  type        = bool
+  default     = true
+}
+
+variable "enable_legacy_aurora_audit_masking" {
+  description = "Mask card numbers in the audit and slowquery log groups of the legacy '<project>-<environment>-central' Aurora cluster. That cluster is not managed here, so its log group names are written out by hand. Only set this where the tofu-managed cluster carries a random name suffix; without the suffix the literal name matches the module-managed group, so both resources would manage the same policy. Turn off once the env is cut over to the tofu-managed cluster. Also requires the enable_aurora_statement_log_masking master switch; with the master off this flag is a silent no-op."
+  type        = bool
+  default     = false
+}
+
 variable "de_mysql_rds_config" {
   description = "Sizing config for the standalone MySQL RDS instance created when enable_de_mysql_rds is true."
   type = object({

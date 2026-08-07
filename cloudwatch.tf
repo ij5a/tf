@@ -105,6 +105,33 @@ locals {
   ] : []
   # Full set of URLs to create as Route 53 health checks: Fargate standard paths + any legacy/extra URLs from tfvars
   route_53_health_check_urls = distinct(concat(local.fargate_health_check_urls, var.route_53_health_check_urls))
+
+  # PCI: hide card numbers in the Aurora logs that carry SQL statement text. AWS needs both an Audit and a Deidentify statement.
+  # CardShapedNumber catches bare digit runs the managed identifier misses; keep Visa longest-first or a 19-digit card matches only its first 16.
+  aurora_statement_log_masking_policy = jsonencode({
+    Name    = "mask-card-numbers"
+    Version = "2021-06-01"
+    Configuration = {
+      CustomDataIdentifier = [
+        {
+          Name  = "CardShapedNumber"
+          Regex = "4[0-9]{18}|4[0-9]{15}|5[1-5][0-9]{14}|2[2-7][0-9]{14}|3[47][0-9]{13}|6011[0-9]{12}|64[4-9][0-9]{13}|65[0-9]{14}|30[0-5][0-9]{11}|3[689][0-9]{12}|35[2-8][0-9]{13}|62[0-9]{14,17}"
+        }
+      ]
+    }
+    Statement = [
+      {
+        Sid            = "Audit"
+        DataIdentifier = ["arn:aws:dataprotection::aws:data-identifier/CreditCardNumber", "CardShapedNumber"]
+        Operation      = { Audit = { FindingsDestination = {} } }
+      },
+      {
+        Sid            = "Redact"
+        DataIdentifier = ["arn:aws:dataprotection::aws:data-identifier/CreditCardNumber", "CardShapedNumber"]
+        Operation      = { Deidentify = { MaskConfig = {} } }
+      }
+    ]
+  })
 }
 
 # Route 53 metrics are always in us-east-1. Alarm names carry the check's fqdn:
@@ -369,5 +396,34 @@ module "alb_unhealthy_host_alarm" {
   dimensions = {
     LoadBalancer = local.alb_arn_suffix
     TargetGroup  = each.value
+  }
+}
+
+# audit carries the statement text; slowquery is covered up front so it is masked from day one if slow query logging is ever turned on.
+# Both groups are only created in prod, so the masking shares that gate. error is left out — no statement text in it.
+resource "aws_cloudwatch_log_data_protection_policy" "aurora_statement_logs" {
+  for_each = local.is_prod && var.enable_aurora_statement_log_masking ? {
+    for pair in setproduct(local.aurora_cluster_keys, ["audit", "slowquery"]) :
+    "${pair[0]}-${pair[1]}" => {
+      cluster  = pair[0]
+      log_type = pair[1]
+    }
+  } : {}
+
+  log_group_name  = module.aurora_mysql_v2[each.value.cluster].db_cluster_cloudwatch_log_groups[each.value.log_type].name
+  policy_document = local.aurora_statement_log_masking_policy
+}
+
+# The legacy central cluster is not tofu-owned, so its log groups are named by hand here. Drop this at cutover.
+resource "aws_cloudwatch_log_data_protection_policy" "aurora_statement_logs_legacy" {
+  for_each        = local.is_prod && var.enable_aurora_statement_log_masking && var.enable_legacy_aurora_audit_masking ? toset(["audit", "slowquery"]) : toset([])
+  log_group_name  = "/aws/rds/cluster/${var.tags.project}-${var.tags.environment}-central/${each.key}"
+  policy_document = local.aurora_statement_log_masking_policy
+
+  lifecycle {
+    precondition {
+      condition     = var.aurora_cluster_identifier_random_suffix
+      error_message = "enable_legacy_aurora_audit_masking needs aurora_cluster_identifier_random_suffix = true. Without the suffix the tofu-managed cluster owns this same log group name, so both resources would manage one policy."
+    }
   }
 }
