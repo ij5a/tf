@@ -30,7 +30,7 @@ enable_cloudwatch_dashboard = true
 enable_vpn_alarms           = true
 
 # Aurora Serverless v2, 2 instances, sized for prod.
-container_insights    = "enhanced"
+container_insights    = "enabled"
 aurora_instance_count = 2
 serverless_aurora_scaling_configuration = {
   min_capacity = 4
