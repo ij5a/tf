@@ -72,12 +72,20 @@ twingate_vpc_route_table_ids = ["rtb-0aaaaaaaaaaaaaaa1", "rtb-0aaaaaaaaaaaaaaa2"
 # DMS migration from a legacy MySQL into Aurora. Passwords come from a
 # gitignored secrets*.tfvars — never commit real values.
 enable_dms = true
+
+# One sub-task so the full load runs one table at a time in load order, instead of
+# starting eight at once and leaving the priority table competing with the rest.
 dms_migration_details = {
   source_db_endpoint = "legacy-mysql.cluster-aaaaexample0.sa-east-1.rds.amazonaws.com"
   source_db_name     = "acme"
   target_db_endpoint = "acme-prod-central.cluster-example0.sa-east-1.rds.amazonaws.com"
   target_db_name     = "acme"
   migration_type     = "full-load-and-cdc"
+
+  full_load_settings = {
+    commit_rate             = 10000
+    max_full_load_sub_tasks = 1
+  }
 }
 dms_source_db_username = "migrator"
 dms_target_db_username = "migrator"
