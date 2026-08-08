@@ -133,6 +133,7 @@ module "aurora_mysql_v2" {
   create_cloudwatch_log_group                   = local.is_prod
   cloudwatch_log_group_retention_in_days        = 90
   cloudwatch_log_group_kms_key_id               = try(aws_kms_key.cloudwatch_logs[0].arn, null)
+  cloudwatch_log_group_class                    = var.aurora_cloudwatch_log_group_class
   subnets                                       = try(module.vpc[0].private_subnets, var.existing_vpc_details.private_subnet_ids)
   vpc_id                                        = try(module.vpc[0].vpc_id, var.existing_vpc_details.id)
 

@@ -347,6 +347,25 @@ variable "enable_aurora_legacy_vpc_ingress" {
   default     = false
 }
 
+variable "enable_aurora_audit_log_archive" {
+  description = "Create the account-wide S3 bucket that holds the exported Aurora audit logs (acme-prod-aurora-audit-archive). Account singleton — only turn it on in the env that owns the shared account resources."
+  type        = bool
+  default     = false
+}
+
+# A log group's class is fixed when the group is created, so the swap happens by CLI (delete +
+# recreate) first and this is set per env afterwards, which keeps the plan a no-op.
+variable "aurora_cloudwatch_log_group_class" {
+  description = "Log class for the Aurora CloudWatch log groups (audit, error, slowquery). null keeps whatever class the live group already has."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.aurora_cloudwatch_log_group_class == null || contains(["STANDARD", "INFREQUENT_ACCESS"], var.aurora_cloudwatch_log_group_class)
+    error_message = "aurora_cloudwatch_log_group_class must be STANDARD or INFREQUENT_ACCESS (or null to keep the current class)."
+  }
+}
+
 variable "enable_aurora_statement_log_masking" {
   description = "Master switch for CloudWatch data protection masking on the Aurora statement log groups (audit, slowquery). Data protection bills $0.12/GB scanned at ingestion. Turning it off deletes the policies and stops masking new events only; events already written stay masked. Masking is display-time — the raw value stays stored and logs:Unmask reveals it."
   type        = bool

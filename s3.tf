@@ -424,3 +424,324 @@ resource "aws_s3_bucket_lifecycle_configuration" "vpc_flow_logs" {
     }
   }
 }
+
+# One archive per AWS account, not per env, so the name carries the account's env not this stack's.
+locals {
+  aurora_audit_archive_name = "acme-prod-aurora-audit-archive"
+}
+
+data "aws_iam_policy_document" "aurora_audit_archive_kms" {
+  count = var.enable_aurora_audit_log_archive ? 1 : 0
+
+  statement {
+    sid    = "EnableIAMUserPermissions"
+    effect = "Allow"
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+    actions   = ["kms:*"]
+    resources = ["*"]
+  }
+
+  # CloudWatch Logs writes the export objects itself, so it needs a data key for the bucket's SSE-KMS default.
+  statement {
+    sid    = "AllowCloudWatchLogsExport"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["logs.${var.region}.amazonaws.com"]
+    }
+    actions = [
+      "kms:GenerateDataKey*",
+      "kms:Decrypt",
+    ]
+    resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:logs:${var.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/rds/cluster/*"]
+    }
+  }
+}
+
+# prevent_destroy so flipping the archive flag back off fails the plan instead of quietly scheduling
+# deletion of the key that a locked evidence bucket needs to stay readable.
+resource "aws_kms_key" "aurora_audit_archive" {
+  count                   = var.enable_aurora_audit_log_archive ? 1 : 0
+  description             = "KMS key for the Aurora audit log archive S3 bucket"
+  enable_key_rotation     = true
+  rotation_period_in_days = 90
+  deletion_window_in_days = 30
+  policy                  = data.aws_iam_policy_document.aurora_audit_archive_kms[0].json
+
+  lifecycle {
+    prevent_destroy = true
+  }
+}
+
+resource "aws_kms_alias" "aurora_audit_archive" {
+  count         = var.enable_aurora_audit_log_archive ? 1 : 0
+  name          = "alias/${local.aurora_audit_archive_name}"
+  target_key_id = aws_kms_key.aurora_audit_archive[0].key_id
+}
+
+data "aws_iam_policy_document" "aurora_audit_archive_bucket" {
+  count = var.enable_aurora_audit_log_archive ? 1 : 0
+
+  statement {
+    sid    = "AWSLogsExportAclCheck"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["logs.${var.region}.amazonaws.com"]
+    }
+    actions   = ["s3:GetBucketAcl"]
+    resources = ["arn:aws:s3:::${local.aurora_audit_archive_name}"]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:logs:${var.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/rds/cluster/*"]
+    }
+  }
+
+  statement {
+    sid    = "AWSLogsExportWrite"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["logs.${var.region}.amazonaws.com"]
+    }
+    actions   = ["s3:PutObject"]
+    resources = ["arn:aws:s3:::${local.aurora_audit_archive_name}/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "s3:x-amz-acl"
+      values   = ["bucket-owner-full-control"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [data.aws_caller_identity.current.account_id]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:logs:${var.region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/rds/cluster/*"]
+    }
+  }
+
+  # The header denies below only fire when the caller sends its own encryption or object-lock headers,
+  # so headerless export puts keep the bucket defaults; the last one blocks both ways of losing an object.
+  statement {
+    sid    = "DenyWrongEncryptionAlgorithm"
+    effect = "Deny"
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    actions   = ["s3:PutObject"]
+    resources = ["arn:aws:s3:::${local.aurora_audit_archive_name}/*"]
+    condition {
+      test     = "Null"
+      variable = "s3:x-amz-server-side-encryption"
+      values   = ["false"]
+    }
+    condition {
+      test     = "StringNotEquals"
+      variable = "s3:x-amz-server-side-encryption"
+      values   = ["aws:kms"]
+    }
+  }
+
+  statement {
+    sid    = "DenyWrongKmsKey"
+    effect = "Deny"
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    actions   = ["s3:PutObject"]
+    resources = ["arn:aws:s3:::${local.aurora_audit_archive_name}/*"]
+    condition {
+      test     = "Null"
+      variable = "s3:x-amz-server-side-encryption-aws-kms-key-id"
+      values   = ["false"]
+    }
+    condition {
+      test     = "StringNotEquals"
+      variable = "s3:x-amz-server-side-encryption-aws-kms-key-id"
+      values   = [aws_kms_key.aurora_audit_archive[0].arn]
+    }
+  }
+
+  statement {
+    sid    = "DenyCustomerProvidedKey"
+    effect = "Deny"
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    actions   = ["s3:PutObject"]
+    resources = ["arn:aws:s3:::${local.aurora_audit_archive_name}/*"]
+    condition {
+      test     = "Null"
+      variable = "s3:x-amz-server-side-encryption-customer-algorithm"
+      values   = ["false"]
+    }
+  }
+
+  statement {
+    sid    = "DenyKmsWithoutKeyId"
+    effect = "Deny"
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    actions   = ["s3:PutObject"]
+    resources = ["arn:aws:s3:::${local.aurora_audit_archive_name}/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "s3:x-amz-server-side-encryption"
+      values   = ["aws:kms"]
+    }
+    condition {
+      test     = "Null"
+      variable = "s3:x-amz-server-side-encryption-aws-kms-key-id"
+      values   = ["true"]
+    }
+  }
+
+  statement {
+    sid    = "DenyShortObjectLockRetention"
+    effect = "Deny"
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    actions = [
+      "s3:PutObject",
+      "s3:PutObjectRetention",
+    ]
+    resources = ["arn:aws:s3:::${local.aurora_audit_archive_name}/*"]
+    condition {
+      test     = "NumericLessThan"
+      variable = "s3:object-lock-remaining-retention-days"
+      values   = ["365"]
+    }
+  }
+
+  statement {
+    sid    = "DenyRetentionRemoval"
+    effect = "Deny"
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    actions   = ["s3:PutObjectRetention"]
+    resources = ["arn:aws:s3:::${local.aurora_audit_archive_name}/*"]
+    condition {
+      test     = "Null"
+      variable = "s3:object-lock-remaining-retention-days"
+      values   = ["true"]
+    }
+  }
+
+  statement {
+    sid    = "DenyEvidenceHiding"
+    effect = "Deny"
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    actions = [
+      "s3:DeleteObject",
+      "s3:DeleteObjectVersion",
+    ]
+    resources = ["arn:aws:s3:::${local.aurora_audit_archive_name}/*"]
+  }
+}
+
+# Holds the Aurora audit logs exported out of CloudWatch before their log groups are swapped to the
+# Infrequent Access class. Object Lock is GOVERNANCE, not COMPLIANCE, while the retention scope is unsettled.
+module "aurora_audit_archive_bucket" {
+  count                                 = var.enable_aurora_audit_log_archive ? 1 : 0
+  source                                = var.module_sources.s3_bucket.source
+  version                               = var.module_sources.s3_bucket.version
+  bucket                                = local.aurora_audit_archive_name
+  block_public_acls                     = true
+  block_public_policy                   = true
+  control_object_ownership              = true
+  force_destroy                         = false
+  ignore_public_acls                    = true
+  object_lock_enabled                   = true
+  object_ownership                      = "BucketOwnerPreferred"
+  restrict_public_buckets               = true
+  attach_deny_insecure_transport_policy = true
+  attach_policy                         = true
+  policy                                = data.aws_iam_policy_document.aurora_audit_archive_bucket[0].json
+
+  versioning = {
+    enabled = true
+  }
+
+  object_lock_configuration = {
+    rule = {
+      default_retention = {
+        mode = "GOVERNANCE"
+        days = 365
+      }
+    }
+  }
+
+  server_side_encryption_configuration = {
+    rule = {
+      apply_server_side_encryption_by_default = {
+        kms_master_key_id = aws_kms_key.aurora_audit_archive[0].arn
+        sse_algorithm     = "aws:kms"
+      }
+      bucket_key_enabled = true
+    }
+  }
+}
+
+# Managed outside the module so the deprecated rule.prefix attribute doesn't flow through
+# the module's s3_bucket_lifecycle_configuration_rules output (AWS provider 6.x deprecation).
+resource "aws_s3_bucket_lifecycle_configuration" "aurora_audit_archive" {
+  count  = var.enable_aurora_audit_log_archive ? 1 : 0
+  bucket = module.aurora_audit_archive_bucket[0].s3_bucket_id
+
+  rule {
+    id     = "archive-then-expire-audit-logs"
+    status = "Enabled"
+
+    filter {}
+
+    transition {
+      days          = 90
+      storage_class = "GLACIER_IR"
+    }
+
+    expiration {
+      days = 365
+    }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 30
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+}
