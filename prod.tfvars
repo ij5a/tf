@@ -37,6 +37,9 @@ serverless_aurora_scaling_configuration = {
   max_capacity = 10
 }
 
+# Must match the live log class — a mismatch makes the next apply destroy and recreate the groups.
+aurora_cloudwatch_log_group_class = "INFREQUENT_ACCESS"
+
 # Per-service prod task scaling (desired:min:max).
 use_service_specs = true
 service_task_count = {
