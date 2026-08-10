@@ -4,7 +4,7 @@ When AWS's CloudFront VPC-Origins layer breaks (2026-07-16 incident: API timeout
 
 What the flag builds: internet-facing ALB (SG ingress = CloudFront origin-facing prefix list :443 only), HTTPS listener that answers a fixed 403 unless the request carries the `x-origin-verify` secret CloudFront injects, its own target groups for `apigw-central` / `apigw-pr` / `de` / `phpmyadmin`, a `bg.<domain>` alias, and the CloudFront swap to the `api-public` origin. Flag off destroys all of it and points behaviors back at the VPC origin — no VPC-origin recreate on revert, fresh secret on the next activation. The `bg.` hostname rides the `aws.example.com` tree where the env dual-runs it, else `bg.<domain_name>`.
 
-Scope notes: envs without CloudFront have nothing to flip. The standalone phpMyAdmin stacks (own distro + own internal ALB) are NOT covered — DB fallback there during a VPC-Origins outage is the RDS Data API or the local mysql pattern.
+Scope notes: the gate is `enable_alb`, not CloudFront — the EKS envs set `enable_alb = false`, so there's nothing to flip there; it works wherever `enable_alb = true`. The standalone phpMyAdmin stacks (own distro + own internal ALB) are NOT covered — DB fallback there during a VPC-Origins outage is the RDS Data API or the local mysql pattern.
 
 ## Traffic path — before and after
 
@@ -35,7 +35,7 @@ flowchart LR
 
 1. `aws health describe-events --filter services=CLOUDFRONT --region us-east-1 --profile acme-prod` — confirm it's an AWS VPC-Origins event (timeouts, ALL envs at once). Don't flip for 403s or single-env errors — those are us, not AWS.
 2. Set `enable_breakglass_public_alb = true` in `acme-<env>.tfvars` → commit + push. **CI is the primary path** — an unpushed local flip is silently reverted (outage returns) by the next `main` apply. Local `./scripts/acme-<env>.sh apply` only if CI is unavailable, then push the tfvars line right after.
-3. **Prod envs with a live DMS replication: CI only, no local apply** — local applies re-assert the DMS endpoint passwords; `ModifyEndpoint` is rejected mid-run and fails the activation.
+3. **Stop the DMS replication first if the env has one running** — any apply, CI or local, re-asserts the DMS endpoint passwords, `ModifyEndpoint` is rejected mid-run, and the activation fails.
 4. `aws elbv2 describe-target-health --target-group-arn $(aws elbv2 describe-target-groups --names <project>-<env>-bg-apigw-c --query 'TargetGroups[0].TargetGroupArn' --output text --profile <profile>) --profile <profile>` — bg targets healthy (repeat for `-bg-apigw-pr` / `-bg-de` / `-bg-pma`).
 5. `curl -s -o /dev/null -w '%{http_code}\n' https://<domain>/api/v1/version` — 200 through CloudFront via the public origin.
 6. `curl -s -o /dev/null -w '%{http_code}\n' https://<domain>/phpmyadmin/` — reachable over Twingate; 403 from a non-allowlisted IP (WAF gate intact — it's distribution-level, unaffected by the origin type).
