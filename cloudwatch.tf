@@ -190,7 +190,7 @@ module "data_replication_failure_alarm" {
   source              = var.module_sources.cloudwatch.source
   version             = var.module_sources.cloudwatch.version
   alarm_name          = "${var.tags.project}-${var.tags.environment}-data-replication-failure-alarm"
-  alarm_description   = "Critical: data replication failure/error detected in central logs. Client and Acme cannot sync data."
+  alarm_description   = "Data replication error: Central -> PR -> the upstream API."
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 1
   datapoints_to_alarm = 1
