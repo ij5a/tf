@@ -4,6 +4,7 @@ module "cloudfront_alarm" {
   source              = var.module_sources.cloudwatch.source
   version             = var.module_sources.cloudwatch.version
   alarm_name          = "${var.tags.project}-${var.tags.environment}-high-${each.key}-alarm"
+  alarm_description   = each.value.description
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 3
   datapoints_to_alarm = 3
@@ -40,6 +41,7 @@ module "high_usage_alarm" {
   source              = var.module_sources.cloudwatch.source
   version             = var.module_sources.cloudwatch.version
   alarm_name          = "${var.tags.project}-${var.tags.environment}-high-${each.key}-alarm"
+  alarm_description   = "Service ${each.value.service} is using more than half its ${strcontains(each.key, "cpu") ? "CPU" : "memory"} for 3 minutes. It may slow down if this keeps climbing."
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 3
   datapoints_to_alarm = 3
@@ -66,7 +68,7 @@ module "low_usage_alarm" {
   source              = var.module_sources.cloudwatch.source
   version             = var.module_sources.cloudwatch.version
   alarm_name          = "${var.tags.project}-${var.tags.environment}-low-ecs-taskcount-${each.key}-alarm"
-  alarm_description   = "ECS service ${each.key} at zero running tasks for 3m"
+  alarm_description   = "Service ${each.key} has no copies running for 3 minutes. This part of the app is down."
   comparison_operator = "LessThanOrEqualToThreshold"
   evaluation_periods  = 3
   datapoints_to_alarm = 3
@@ -89,9 +91,18 @@ module "low_usage_alarm" {
 locals {
   # per-alarm config for cloudfront_alarm; keys must match the for_each set exactly
   cloudfront_alarm_config = {
-    "cloudfront-total4xxerrorrate" = { metric_name = "4xxErrorRate", threshold = 70, unit = "Percent" }
-    "cloudfront-total5xxerrorrate" = { metric_name = "5xxErrorRate", threshold = 70, unit = "Percent" }
-    "cloudfront-originlatency"     = { metric_name = "OriginLatency", threshold = 1000, unit = null }
+    "cloudfront-total4xxerrorrate" = {
+      metric_name = "4xxErrorRate", threshold = 70, unit = "Percent"
+      description = "Website: most requests are being rejected as bad (70%+ for 3 minutes). Users likely see errors."
+    }
+    "cloudfront-total5xxerrorrate" = {
+      metric_name = "5xxErrorRate", threshold = 70, unit = "Percent"
+      description = "Website: most requests are failing on our side (70%+ for 3 minutes). The site is likely down for users."
+    }
+    "cloudfront-originlatency" = {
+      metric_name = "OriginLatency", threshold = 1000, unit = null
+      description = "Website is slow: our server takes over 1 second to answer, for 3 minutes straight."
+    }
   }
 
   # single source of truth for Fargate uptime paths: probed by Route 53, allowed through WAF, shown in the overview dashboard
@@ -143,7 +154,7 @@ module "route53_health_check_alarm" {
   version = var.module_sources.cloudwatch.version
 
   alarm_name          = "${var.tags.project}-${var.tags.environment}-route53-unhealthy-${replace(each.value.fqdn, ".", "-")}-${replace(trim(each.value.resource_path, "/"), "/", "-")}-alarm"
-  alarm_description   = "Route 53 health check unhealthy: ${each.value.fqdn}${each.value.resource_path}"
+  alarm_description   = "${each.value.fqdn}${each.value.resource_path} is not answering from the internet. Users cannot reach this page or API."
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = 3
   datapoints_to_alarm = 3
@@ -230,7 +241,7 @@ module "pr_upstream_api_timeout_alarm" {
   source              = var.module_sources.cloudwatch.source
   version             = var.module_sources.cloudwatch.version
   alarm_name          = "${var.tags.project}-${var.tags.environment}-pr-upstream-api-timeout-alarm"
-  alarm_description   = "PR refreshExternalInfo calls to the upstream API are timing out (10s axios timeout / ECONNABORTED) in ${var.tags.project}-${var.tags.environment}. Sustained means PR can't reach the upstream API; ~98% are 10s timeouts."
+  alarm_description   = "The PR service cannot reach the upstream API. Calls keep timing out after 10 seconds, so PR is not getting updated external-processor info."
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 3
   datapoints_to_alarm = 2
@@ -342,14 +353,20 @@ resource "aws_cloudwatch_dashboard" "route53_health_checks" {
 # ALB 5xx alarms — ALB-generated (502/503/504) and app-returned 5xx (dashboard-only before this). qa/preprod/prod only — dev is noise.
 module "alb_5xx_alarm" {
   for_each = var.enable_cloudwatch_alarms && var.enable_alb && local.alb_arn_suffix != null && contains(["qa", "preprod", "prod"], var.tags.environment) ? {
-    "elb-5xx"    = { metric_name = "HTTPCode_ELB_5XX_Count", threshold = 5, datapoints_to_alarm = 3 }
-    "target-5xx" = { metric_name = "HTTPCode_Target_5XX_Count", threshold = 10, datapoints_to_alarm = 2 }
+    "elb-5xx" = {
+      metric_name = "HTTPCode_ELB_5XX_Count", threshold = 5, datapoints_to_alarm = 3
+      description = "Requests could not reach the app, so users got errors back (5+ in 3 minutes)."
+    }
+    "target-5xx" = {
+      metric_name = "HTTPCode_Target_5XX_Count", threshold = var.alb_target_5xx_alarm_threshold, datapoints_to_alarm = 2
+      description = "The app returned server errors to users (${var.alb_target_5xx_alarm_threshold}+ in 3 minutes). The app is up but failing on some requests."
+    }
   } : {}
 
   source              = var.module_sources.cloudwatch.source
   version             = var.module_sources.cloudwatch.version
   alarm_name          = "${var.tags.project}-${var.tags.environment}-alb-${each.key}-alarm"
-  alarm_description   = "ALB ${each.value.metric_name} >= ${each.value.threshold} over 3m"
+  alarm_description   = each.value.description
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 3
   datapoints_to_alarm = each.value.datapoints_to_alarm
@@ -380,7 +397,7 @@ module "alb_unhealthy_host_alarm" {
   source              = var.module_sources.cloudwatch.source
   version             = var.module_sources.cloudwatch.version
   alarm_name          = "${var.tags.project}-${var.tags.environment}-alb-${each.key}-unhealthy-host-alarm"
-  alarm_description   = "ALB target group ${each.key} unhealthy host for 3m"
+  alarm_description   = "At least one copy of ${each.key} stopped responding for 3 minutes. Traffic goes to the copies that still work."
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 3
   datapoints_to_alarm = 3

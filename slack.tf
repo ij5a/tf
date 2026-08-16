@@ -54,6 +54,7 @@ module "notify_slack" {
   slack_webhook_url                      = aws_kms_ciphertext.slack_webhook_url[each.key].ciphertext_blob
   sns_topic_name                         = "${var.tags.project}-${var.tags.environment}-${each.key}-alert"
   lambda_function_name                   = "${var.tags.project}-${var.tags.environment}-${each.key}-alert"
+  lambda_source_path                     = "lambda-functions/python/notify-slack/notify_slack.py"
   architectures                          = ["arm64"]
   cloudwatch_log_group_retention_in_days = 1
   recreate_missing_package               = false
@@ -69,6 +70,7 @@ module "notify_slack_alerts_us_east_1" {
   slack_webhook_url                      = aws_kms_ciphertext.slack_webhook_url_us_east_1[0].ciphertext_blob
   sns_topic_name                         = "${var.tags.project}-${var.tags.environment}-alerts-us-east-1-alert"
   lambda_function_name                   = "${var.tags.project}-${var.tags.environment}-alerts-us-east-1-alert"
+  lambda_source_path                     = "lambda-functions/python/notify-slack/notify_slack.py"
   architectures                          = ["arm64"]
   cloudwatch_log_group_retention_in_days = 1
   recreate_missing_package               = false

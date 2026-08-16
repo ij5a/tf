@@ -234,6 +234,12 @@ variable "enable_cloudwatch_dashboard" {
   default     = true
 }
 
+variable "alb_target_5xx_alarm_threshold" {
+  description = "ALB HTTPCode_Target_5XX_Count per minute before the target 5xx alarm fires (2 of 3 minutes must breach)."
+  type        = number
+  default     = 10
+}
+
 variable "enable_cloudwatch_logging" {
   description = "Determines whether CloudWatch logging is configured for this container definition."
   type        = bool

@@ -5,6 +5,7 @@
 *.tfplan
 crash.log
 crash.*.log
+builds/
 
 # Local secrets — this showcase ships placeholders only, never real values
 secrets*.tfvars

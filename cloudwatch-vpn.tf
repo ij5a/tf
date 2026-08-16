@@ -13,7 +13,7 @@ module "vpn_tunnel_down_alarm" {
   source              = var.module_sources.cloudwatch.source
   version             = var.module_sources.cloudwatch.version
   alarm_name          = "${var.tags.project}-${var.tags.environment}-legacy-vpn-${each.key}-tunnel-down-alarm"
-  alarm_description   = "Legacy VPN ${each.value.peer} (${each.value.vpn_id}) active tunnel ${each.value.tunnel_ip} is DOWN. This VPN runs single-tunnel by design; the other AWS-default tunnel is DOWN intentionally."
+  alarm_description   = "The VPN link to ${each.value.peer} is down. Traffic to ${each.value.peer} cannot get through. This VPN is built with only one link on purpose, so there is no backup."
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = 3
   datapoints_to_alarm = 3
@@ -56,7 +56,7 @@ module "vpn_ike_dpd_alarm" {
   source              = var.module_sources.cloudwatch.source
   version             = var.module_sources.cloudwatch.version
   alarm_name          = "${var.tags.project}-${var.tags.environment}-legacy-vpn-${each.key}-ike-dpd-events-alarm"
-  alarm_description   = "Legacy VPN ${each.value.peer} (${each.value.vpn_id}) IKE/DPD churn — possible precursor to active-tunnel drop. Single-tunnel VPN by design."
+  alarm_description   = "The VPN link to ${each.value.peer} keeps reconnecting. It is still up but may drop soon."
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 1
   datapoints_to_alarm = 1
