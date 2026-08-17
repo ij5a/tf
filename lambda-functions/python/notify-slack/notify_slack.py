@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
-# Vendored from terraform-aws-modules/notify-slack 7.5.1. Only change: the "Alarm reason" field is dropped.
-# Frozen — module version bumps do not update this file, so re-diff against upstream on a major bump.
+# Vendored from terraform-aws-modules/notify-slack 7.5.1: no "Alarm reason" field, state-aware wording.
+# slack.tf points the module at this copy, so upstream fixes never land. Re-diff on any version bump.
 
 """
     Notify Slack
@@ -124,15 +124,27 @@ def format_cloudwatch_alarm(message: Dict[str, Any], region: str) -> Dict[str, A
 
     cloudwatch_url = get_service_url(region=region, service="cloudwatch")
     alarm_name = message["AlarmName"]
+    new_state = message["NewStateValue"]
+    recovered = new_state == "OK" and message["OldStateValue"] == "ALARM"
+    alarm_description = message["AlarmDescription"]
+    if recovered:
+        alarm_description = f"The alert has cleared. It was: {alarm_description}"
+
+    if new_state == "ALARM":
+        state_word = "triggered"
+    elif recovered:
+        state_word = "cleared"
+    else:
+        state_word = f"is now {new_state}"
 
     return {
         "color": CloudWatchAlarmState[message["NewStateValue"]].value,
-        "fallback": f"Alarm {alarm_name} triggered",
+        "fallback": f"Alarm {alarm_name} {state_word}",
         "fields": [
             {"title": "Alarm Name", "value": f"`{alarm_name}`", "short": True},
             {
                 "title": "Alarm Description",
-                "value": f"`{message['AlarmDescription']}`",
+                "value": f"`{alarm_description}`",
                 "short": False,
             },
             {

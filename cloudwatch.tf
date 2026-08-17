@@ -99,10 +99,6 @@ locals {
       metric_name = "5xxErrorRate", threshold = 70, unit = "Percent"
       description = "Website: most requests are failing on our side (70%+ for 3 minutes). The site is likely down for users."
     }
-    "cloudfront-originlatency" = {
-      metric_name = "OriginLatency", threshold = 1000, unit = null
-      description = "Website is slow: our server takes over 1 second to answer, for 3 minutes straight."
-    }
   }
 
   # single source of truth for Fargate uptime paths: probed by Route 53, allowed through WAF, shown in the overview dashboard
@@ -355,11 +351,11 @@ module "alb_5xx_alarm" {
   for_each = var.enable_cloudwatch_alarms && var.enable_alb && local.alb_arn_suffix != null && contains(["qa", "preprod", "prod"], var.tags.environment) ? {
     "elb-5xx" = {
       metric_name = "HTTPCode_ELB_5XX_Count", threshold = 5, datapoints_to_alarm = 3
-      description = "Requests could not reach the app, so users got errors back (5+ in 3 minutes)."
+      description = "Requests could not reach the app, so users got errors back (5+ every minute for 3 minutes straight)."
     }
     "target-5xx" = {
       metric_name = "HTTPCode_Target_5XX_Count", threshold = var.alb_target_5xx_alarm_threshold, datapoints_to_alarm = 2
-      description = "The app returned server errors to users (${var.alb_target_5xx_alarm_threshold}+ in 3 minutes). The app is up but failing on some requests."
+      description = "The app returned server errors to users (${var.alb_target_5xx_alarm_threshold}+ per minute in 2 of the last 3 minutes). The app is up but failing on some requests."
     }
   } : {}
 

@@ -942,9 +942,3 @@ variable "enable_vpn_alarms" {
   type        = bool
   default     = false
 }
-
-variable "vpn_log_group_name" {
-  description = "Existing CloudWatch log group receiving VPN tunnel logs."
-  type        = string
-  default     = "/aws/vpn/acme-prod"
-}
