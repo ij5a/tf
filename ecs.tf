@@ -543,12 +543,14 @@ module "ecs_service" {
   autoscaling_scheduled_actions = local.is_prod ? {
     business_hours = {
       schedule         = var.autoscaling_schedule.business_hours
+      timezone         = var.autoscaling_schedule.timezone
       desired_capacity = split(":", local.service_task_count[each.key])[0]
       min_capacity     = split(":", local.service_task_count[each.key])[1]
       max_capacity     = split(":", local.service_task_count[each.key])[2]
     },
     off_hours = {
       schedule         = var.autoscaling_schedule.off_hours
+      timezone         = var.autoscaling_schedule.timezone
       desired_capacity = ceil(split(":", local.service_task_count[each.key])[0] / 2)
       min_capacity     = ceil(split(":", local.service_task_count[each.key])[1] / 2)
       max_capacity     = ceil(split(":", local.service_task_count[each.key])[2] / 2)
@@ -556,12 +558,14 @@ module "ecs_service" {
     } : merge({
       business_hours = {
         schedule         = var.autoscaling_schedule.business_hours
+        timezone         = var.autoscaling_schedule.timezone
         desired_capacity = split(":", local.service_task_count[each.key])[0]
         min_capacity     = split(":", local.service_task_count[each.key])[1]
         max_capacity     = split(":", local.service_task_count[each.key])[2]
       },
       off_hours = {
         schedule         = var.autoscaling_schedule.off_hours
+        timezone         = var.autoscaling_schedule.timezone
         desired_capacity = 0
         min_capacity     = 0
         max_capacity     = 0
@@ -569,6 +573,7 @@ module "ecs_service" {
       }, var.autoscaling_schedule.weekend_guard ? {
       weekend_guard = {
         schedule         = local.weekend_guard_schedule
+        timezone         = var.autoscaling_schedule.timezone
         desired_capacity = 0
         min_capacity     = 0
         max_capacity     = 0
@@ -828,28 +833,33 @@ module "phpmyadmin" {
   autoscaling_scheduled_actions = local.is_prod ? {
     business_hours = {
       schedule     = var.autoscaling_schedule.business_hours
+      timezone     = var.autoscaling_schedule.timezone
       min_capacity = 1
       max_capacity = 2
     },
     off_hours = {
       schedule     = var.autoscaling_schedule.off_hours
+      timezone     = var.autoscaling_schedule.timezone
       min_capacity = 1
       max_capacity = 1
     }
     } : merge({
       business_hours = {
         schedule     = var.autoscaling_schedule.business_hours
+        timezone     = var.autoscaling_schedule.timezone
         min_capacity = 1
         max_capacity = 2
       },
       off_hours = {
         schedule     = var.autoscaling_schedule.off_hours
+        timezone     = var.autoscaling_schedule.timezone
         min_capacity = 0
         max_capacity = 0
       }
       }, var.autoscaling_schedule.weekend_guard ? {
       weekend_guard = {
         schedule     = local.weekend_guard_schedule
+        timezone     = var.autoscaling_schedule.timezone
         min_capacity = 0
         max_capacity = 0
       }
@@ -862,9 +872,9 @@ module "iso8583" {
   version                  = var.module_sources.ecs_service.version
   count                    = var.enable_ecs && var.enable_iso8583_playground ? 1 : 0
   cluster_arn              = module.ecs[0].arn
-  cpu                      = 1024
+  cpu                      = 512
   enable_execute_command   = true
-  memory                   = 2048
+  memory                   = 1024
   name                     = "iso8583"
   family                   = "${var.tags.project}-${var.tags.environment}-iso8583"
   desired_count            = 1
@@ -879,9 +889,9 @@ module "iso8583" {
 
   container_definitions = {
     "iso8583" = {
-      cpu                                    = 1024
-      memory                                 = 2048
-      memoryReservation                      = 2048
+      cpu                                    = 512
+      memory                                 = 1024
+      memoryReservation                      = 1024
       enable_cloudwatch_logging              = var.enable_cloudwatch_logging
       cloudwatch_log_group_name              = "${var.tags.project}-${var.tags.environment}-iso8583"
       cloudwatch_log_group_retention_in_days = var.cloudwatch_log_group_retention_in_days
@@ -972,17 +982,20 @@ module "iso8583" {
   autoscaling_scheduled_actions = merge({
     business_hours = {
       schedule     = var.autoscaling_schedule.business_hours
+      timezone     = var.autoscaling_schedule.timezone
       min_capacity = 1
       max_capacity = 1
     },
     off_hours = {
       schedule     = var.autoscaling_schedule.off_hours
+      timezone     = var.autoscaling_schedule.timezone
       min_capacity = 0
       max_capacity = 0
     }
     }, var.autoscaling_schedule.weekend_guard ? {
     weekend_guard = {
       schedule     = local.weekend_guard_schedule
+      timezone     = var.autoscaling_schedule.timezone
       min_capacity = 0
       max_capacity = 0
     }

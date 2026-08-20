@@ -44,6 +44,16 @@ module "vpc" {
   flow_log_hive_compatible_partitions  = true
 }
 
+# S3 gateway endpoint keeps ECR layer pulls and S3 reads off the NAT gateway.
+resource "aws_vpc_endpoint" "s3" {
+  count             = var.enable_vpc && !var.use_existing_vpc ? 1 : 0
+  vpc_id            = module.vpc[0].vpc_id
+  service_name      = "com.amazonaws.${var.region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = module.vpc[0].private_route_table_ids
+  tags              = { Name = "${var.tags.project}-${var.tags.environment}-s3-endpoint" }
+}
+
 # Flow log against the legacy (pre-tofu) VPC referenced via existing_vpc_details.
 # Only one env per shared legacy VPC should set manage_existing_vpc_flow_log=true.
 resource "aws_flow_log" "legacy_vpc" {

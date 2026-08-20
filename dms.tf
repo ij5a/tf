@@ -78,38 +78,42 @@ module "security_group" {
   description = "Security group for DMS"
   vpc_id      = try(module.vpc[0].vpc_id, var.existing_vpc_details.id)
 
-  # Source egress via SG reference only when NOT using legacy-db peering. With use_legacy_db
-  # the source is in a peered VPC, reached via CIDR (egress_with_cidr_blocks below).
-  egress_with_source_security_group_id = concat(
-    var.use_legacy_db ? [] : [
-      {
-        from_port                = 3306
-        to_port                  = 3306
-        protocol                 = "tcp"
-        description              = "MySQL DB access to the source database using port 3306"
-        source_security_group_id = var.dms_migration_details.source_db_security_group_id
-      }
-    ],
-    [
-      {
-        from_port                = 3306
-        to_port                  = 3306
-        protocol                 = "tcp"
-        description              = "MySQL DB access to the target database using port 3306"
-        source_security_group_id = try(module.aurora_mysql_v2["central"].security_group_id, var.dms_migration_details.target_db_security_group_id)
-      }
-    ]
-  )
+  # v6 dropped the implicit Name tag that v5 set from var.name.
+  tags = {
+    Name = "${var.tags.project}-${var.tags.environment}-dms-sg"
+  }
 
-  egress_with_cidr_blocks = var.use_legacy_db ? [
+  # Source egress via SG reference only when NOT using legacy-db peering. With use_legacy_db
+  # the source is in a peered VPC, reached via CIDR instead.
+  egress_rules = merge(
     {
-      from_port   = 3306
-      to_port     = 3306
-      protocol    = "tcp"
-      description = "MySQL DB access to the source database (legacy peered VPC) using port 3306"
-      cidr_blocks = var.legacy_db_redis_server_details.vpc.cidr_block
-    }
-  ] : []
+      mysql_target = {
+        from_port                    = 3306
+        to_port                      = 3306
+        ip_protocol                  = "tcp"
+        description                  = "MySQL DB access to the target database using port 3306"
+        referenced_security_group_id = try(module.aurora_mysql_v2["central"].security_group_id, var.dms_migration_details.target_db_security_group_id)
+      }
+    },
+    var.use_legacy_db ? {} : {
+      mysql_source = {
+        from_port                    = 3306
+        to_port                      = 3306
+        ip_protocol                  = "tcp"
+        description                  = "MySQL DB access to the source database using port 3306"
+        referenced_security_group_id = var.dms_migration_details.source_db_security_group_id
+      }
+    },
+    var.use_legacy_db ? {
+      mysql_source = {
+        from_port   = 3306
+        to_port     = 3306
+        ip_protocol = "tcp"
+        description = "MySQL DB access to the source database (legacy peered VPC) using port 3306"
+        cidr_ipv4   = var.legacy_db_redis_server_details.vpc.cidr_block
+      }
+    } : {}
+  )
 }
 
 # When use_legacy_db, the peering module adds a CIDR ingress on the source SG, so this
@@ -122,7 +126,7 @@ resource "aws_security_group_rule" "dms_source_db_access" {
   protocol                 = "tcp"
   description              = "Allow DMS access to source database"
   security_group_id        = var.dms_migration_details.source_db_security_group_id
-  source_security_group_id = module.security_group[0].security_group_id
+  source_security_group_id = module.security_group[0].id
 }
 
 resource "aws_security_group_rule" "dms_target_db_access" {
@@ -133,7 +137,7 @@ resource "aws_security_group_rule" "dms_target_db_access" {
   protocol                 = "tcp"
   description              = "Allow DMS access to target database"
   security_group_id        = try(module.aurora_mysql_v2["central"].security_group_id, var.dms_migration_details.target_db_security_group_id)
-  source_security_group_id = module.security_group[0].security_group_id
+  source_security_group_id = module.security_group[0].id
 }
 
 resource "aws_dms_replication_config" "serverless" {
@@ -162,7 +166,7 @@ resource "aws_dms_replication_config" "serverless" {
     min_capacity_units          = var.dms_migration_details.compute_config.min_capacity_units
     max_capacity_units          = var.dms_migration_details.compute_config.max_capacity_units
     replication_subnet_group_id = aws_dms_replication_subnet_group.dms_subnet_group[0].replication_subnet_group_id
-    vpc_security_group_ids      = [module.security_group[0].security_group_id]
+    vpc_security_group_ids      = [module.security_group[0].id]
   }
 
   depends_on = [

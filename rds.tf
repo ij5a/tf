@@ -175,9 +175,15 @@ module "aurora_mysql_v2" {
         name  = "server_audit_logging"
         value = "1"
       },
+      # TABLE records only re-index what the retained QUERY statement text already
+      # names, and rdsadmin is Aurora's own health-check polling.
       {
         name  = "server_audit_events"
-        value = "CONNECT,QUERY,TABLE"
+        value = "CONNECT,QUERY"
+      },
+      {
+        name  = "server_audit_excl_users"
+        value = "rdsadmin"
       }
     ] : [])
   }
@@ -251,15 +257,31 @@ module "de_mysql_rds_security_group" {
   description = "Security group for the standalone MySQL RDS instance for the de service"
   vpc_id      = try(module.vpc[0].vpc_id, var.existing_vpc_details.id)
 
-  # Twingate as its own rule resource: folding it into ingress_cidr_blocks would force-replace
-  # the shared rule (cidr_blocks is ForceNew) whenever the flag flips on a live SG.
-  ingress_cidr_blocks = [try(module.vpc[0].vpc_cidr_block, var.existing_vpc_details.cidr_block)]
-  ingress_rules       = ["mysql-tcp"]
-  ingress_with_cidr_blocks = var.use_twingate_transit_gateway ? [{
-    rule        = "mysql-tcp"
-    cidr_blocks = var.twingate_vpc_cidr_block
-    description = "Twingate VPC CIDR block"
-  }] : []
+  # v6 dropped the implicit Name tag that v5 set from var.name.
+  tags = {
+    Name = "${var.tags.project}-${var.tags.environment}-de-mysql"
+  }
+
+  ingress_rules = merge(
+    {
+      mysql_vpc = {
+        from_port   = 3306
+        to_port     = 3306
+        ip_protocol = "tcp"
+        description = "MySQL/Aurora"
+        cidr_ipv4   = try(module.vpc[0].vpc_cidr_block, var.existing_vpc_details.cidr_block)
+      }
+    },
+    var.use_twingate_transit_gateway ? {
+      mysql_twingate = {
+        from_port   = 3306
+        to_port     = 3306
+        ip_protocol = "tcp"
+        description = "Twingate VPC CIDR block"
+        cidr_ipv4   = var.twingate_vpc_cidr_block
+      }
+    } : {}
+  )
 }
 
 module "de_mysql_rds" {
@@ -296,7 +318,7 @@ module "de_mysql_rds" {
 
   create_db_subnet_group = true
   subnet_ids             = try(module.vpc[0].private_subnets, var.existing_vpc_details.private_subnet_ids)
-  vpc_security_group_ids = [module.de_mysql_rds_security_group[0].security_group_id]
+  vpc_security_group_ids = [module.de_mysql_rds_security_group[0].id]
 
   storage_encrypted                     = true
   performance_insights_enabled          = true

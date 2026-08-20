@@ -201,7 +201,7 @@ module "data_replication_failure_alarm" {
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 1
   datapoints_to_alarm = 1
-  threshold           = 1
+  threshold           = var.data_replication_failure_alarm_threshold
   period              = 60
   namespace           = "acme/${var.tags.project}-${var.tags.environment}"
   metric_name         = "DataReplicationFailures"
@@ -387,7 +387,7 @@ module "alb_unhealthy_host_alarm" {
       "apigw-central" = local.alb_apigw_central_tg
       "apigw-pr"      = local.alb_apigw_pr_tg
       "de"            = local.alb_de_tg
-    } : k => suffix if suffix != null
+    } : k => suffix if contains(var.services, k)
   } : {}
 
   source              = var.module_sources.cloudwatch.source

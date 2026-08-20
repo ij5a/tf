@@ -19,27 +19,27 @@ variable "module_sources" {
     }
     ecs_cluster = {
       source  = "terraform-aws-modules/ecs/aws//modules/cluster"
-      version = "~> 7.5.0"
+      version = "~> 7.6.0"
     }
     ecs_service = {
       source  = "terraform-aws-modules/ecs/aws//modules/service"
-      version = "~> 7.5.0"
+      version = "~> 7.6.0"
     }
     elasticache = {
       source  = "terraform-aws-modules/elasticache/aws"
-      version = "~> 1.11.0"
+      version = "~> 1.11.1"
     }
     fck_nat = {
       source  = "RaJiska/fck-nat/aws"
-      version = "~> 1.6.0"
+      version = "~> 1.6.1"
     }
     iam_policy = {
       source  = "terraform-aws-modules/iam/aws//modules/iam-policy"
-      version = "~> 6.6.1"
+      version = "~> 6.8.0"
     }
     iam_role = {
       source  = "terraform-aws-modules/iam/aws//modules/iam-role"
-      version = "~> 6.6.1"
+      version = "~> 6.8.0"
     }
     lambda = {
       source  = "terraform-aws-modules/lambda/aws"
@@ -47,19 +47,19 @@ variable "module_sources" {
     }
     notify_slack = {
       source  = "terraform-aws-modules/notify-slack/aws"
-      version = "~> 7.5.1"
+      version = "~> 7.5.2"
     }
     rds = {
       source  = "terraform-aws-modules/rds/aws"
-      version = "~> 7.2.0"
+      version = "~> 7.2.1"
     }
     rds_aurora = {
       source  = "terraform-aws-modules/rds-aurora/aws"
-      version = "~> 10.3.0"
+      version = "~> 10.3.1"
     }
     s3_bucket = {
       source  = "terraform-aws-modules/s3-bucket/aws"
-      version = "~> 5.15.1"
+      version = "~> 5.15.4"
     }
     secrets_manager = {
       source  = "terraform-aws-modules/secrets-manager/aws"
@@ -67,7 +67,7 @@ variable "module_sources" {
     }
     security_group = {
       source  = "terraform-aws-modules/security-group/aws"
-      version = "~> 5.3.1"
+      version = "~> 6.0.0"
     }
     vpc = {
       source  = "terraform-aws-modules/vpc/aws"
@@ -198,6 +198,31 @@ variable "enable_breakglass_public_alb" {
   default     = false
 }
 
+variable "enable_db_dump_host" {
+  description = "Temporary EC2 dump host plus S3 bucket for handing a DB dump to a colleague. SSM access only. Turning it off destroys everything, bucket contents included."
+  type        = bool
+  default     = false
+}
+
+# Default crons are UTC; timezone reinterprets them, so restate them in local time.
+variable "db_dump_host_config" {
+  description = "Settings for the dump host. db_endpoint and db_security_group_ids name the target DB. instance_type must be arm64. subnet_id null = first private subnet. Default crons are UTC; timezone reinterprets them, so restate crons in local time."
+  type = object({
+    db_endpoint           = optional(string, "")
+    db_security_group_ids = optional(list(string), [])
+    instance_type         = optional(string, "c7g.2xlarge")
+    root_volume_gb        = optional(number, 100)
+    subnet_id             = optional(string)
+    dump_expiry_days      = optional(number, 7)
+    schedule = optional(object({
+      start    = optional(string, "cron(0 8 ? * * *)")
+      stop     = optional(string, "cron(0 16 ? * * *)")
+      timezone = optional(string)
+    }), {})
+  })
+  default = {}
+}
+
 variable "enable_dms" {
   description = "Enable DMS for database migration"
   type        = bool
@@ -232,6 +257,12 @@ variable "enable_cloudwatch_dashboard" {
   description = "Enable the per-environment CloudWatch overview dashboard (aws_cloudwatch_dashboard.main)"
   type        = bool
   default     = true
+}
+
+variable "data_replication_failure_alarm_threshold" {
+  description = "Matching central log lines per minute before the data replication alarm fires. Raise per-env where task churn makes the default too twitchy."
+  type        = number
+  default     = 1
 }
 
 variable "alb_target_5xx_alarm_threshold" {
@@ -586,16 +617,18 @@ variable "region" {
   default     = "sa-east-1"
 }
 
+# AWS cron runs in UTC; this is 3 PM PHT.
 variable "rds_scheduler_cron_start_time" {
   description = "Cron expression for the start time of the RDS instances"
   type        = string
-  default     = "cron(0 7 ? * MON-FRI *)" # 3 PM PHT
+  default     = "cron(0 7 ? * MON-FRI *)"
 }
 
+# AWS cron runs in UTC; this is 12 AM PHT.
 variable "rds_scheduler_cron_stop_time" {
   description = "Cron expression for the stop time of the RDS instances"
   type        = string
-  default     = "cron(0 16 ? * MON-FRI *)" # 12 AM PHT
+  default     = "cron(0 16 ? * MON-FRI *)"
 }
 
 variable "aurora_instance_count" {
@@ -740,16 +773,19 @@ variable "service_ports" {
   }
 }
 
+# Cron hours read in UTC unless the env sets timezone. The UTC defaults below are 3 PM PHT
+# business_hours and 2 AM PHT off_hours, daily so weekend starts still scale down.
 variable "autoscaling_schedule" {
   description = "Cron schedules for ECS autoscaling (business_hours = scale up, off_hours = scale down) plus the weekend_guard bool - true adds a 5-min SAT,SUN re-zero action on non-prod so accidental weekend starts self-heal"
   type = object({
     business_hours = string
     off_hours      = string
     weekend_guard  = optional(bool, true)
+    timezone       = optional(string)
   })
   default = {
-    business_hours = "cron(0 7 ? * MON-FRI *)" # 3 PM PHT
-    off_hours      = "cron(0 18 ? * * *)"      # 2 AM PHT, daily so weekend starts still scale down
+    business_hours = "cron(0 7 ? * MON-FRI *)"
+    off_hours      = "cron(0 18 ? * * *)"
   }
 }
 
