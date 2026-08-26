@@ -32,3 +32,42 @@ module "vpn_tunnel_down_alarm" {
   alarm_actions = var.enable_slack_notifications ? [module.notify_slack["alerts"].slack_topic_arn] : []
   ok_actions    = var.enable_slack_notifications ? [module.notify_slack["alerts"].slack_topic_arn] : []
 }
+
+# This log group belongs to acme-prod. If another environment enables enable_vpn_alarms,
+# add that environment's log group name here first.
+resource "aws_cloudwatch_log_metric_filter" "vpn_peer_dead_events" {
+  count          = var.enable_vpn_alarms ? 1 : 0
+  name           = "${var.tags.project}-${var.tags.environment}-vpn-peer-dead-events"
+  log_group_name = "/aws/vpn/acme-prod"
+  pattern        = "{ $.ike_phase2_state = \"down\" && $.details = \"Peer is not responsive - Declaring peer dead\" }"
+
+  metric_transformation {
+    name          = "VpnPeerDeadEvents"
+    namespace     = "acme/${var.tags.project}-${var.tags.environment}"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+}
+
+module "vpn_peer_dead_alarm" {
+  count               = var.enable_vpn_alarms ? 1 : 0
+  source              = var.module_sources.cloudwatch.source
+  version             = var.module_sources.cloudwatch.version
+  alarm_name          = "${var.tags.project}-${var.tags.environment}-vpn-peer-dead-events-alarm"
+  alarm_description   = "The VPN link to SITE-A or SITE-B reported the peer as dead, and if banks or stores report brief errors around this time, this may be the cause. When this alarm clears, it only means no new reports that the peer is dead arrived, not that the link is back up."
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  datapoints_to_alarm = 1
+  threshold           = 1
+  period              = 300
+  namespace           = "acme/${var.tags.project}-${var.tags.environment}"
+  metric_name         = "VpnPeerDeadEvents"
+  statistic           = "Sum"
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = var.enable_slack_notifications ? [module.notify_slack_vpn_flap[0].slack_topic_arn] : []
+  ok_actions    = var.enable_slack_notifications ? [module.notify_slack_vpn_flap[0].slack_topic_arn] : []
+
+  depends_on = [aws_cloudwatch_log_metric_filter.vpn_peer_dead_events]
+}

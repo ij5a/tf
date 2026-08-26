@@ -60,6 +60,23 @@ module "notify_slack" {
   recreate_missing_package               = false
 }
 
+# VPN flap alerts reuse the alerts webhook and channel but use a topic without PagerDuty.
+module "notify_slack_vpn_flap" {
+  count                                  = var.enable_vpn_alarms && var.enable_slack_notifications && var.enable_alert_notifications ? 1 : 0
+  source                                 = var.module_sources.notify_slack.source
+  version                                = var.module_sources.notify_slack.version
+  slack_channel                          = !local.is_prod ? "${var.tags.project}-dev-alerts" : "${var.tags.project}-${var.tags.environment}-alerts"
+  slack_username                         = var.slack_username
+  kms_key_arn                            = aws_kms_key.notify_slack[0].arn
+  slack_webhook_url                      = aws_kms_ciphertext.slack_webhook_url["alerts"].ciphertext_blob
+  sns_topic_name                         = "${var.tags.project}-${var.tags.environment}-vpn-flap-slack-only-alert"
+  lambda_function_name                   = "${var.tags.project}-${var.tags.environment}-vpn-flap-slack-only-alert"
+  lambda_source_path                     = "lambda-functions/python/notify-slack/notify_slack.py"
+  architectures                          = ["arm64"]
+  cloudwatch_log_group_retention_in_days = 1
+  recreate_missing_package               = false
+}
+
 module "notify_slack_alerts_us_east_1" {
   count                                  = var.enable_slack_notifications && var.enable_alert_notifications ? 1 : 0
   source                                 = var.module_sources.notify_slack.source
