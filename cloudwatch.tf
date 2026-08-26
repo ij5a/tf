@@ -141,8 +141,7 @@ locals {
   })
 }
 
-# Route 53 metrics are always in us-east-1. Alarm names carry the check's fqdn:
-# path-only names collided when two domains shared a path, and the colliding alarms overwrote each other on every apply.
+# This alarm ignores `enable_cloudwatch_alarms` on purpose, so prod still knows when a page or API stops answering.
 module "route53_health_check_alarm" {
   for_each = length(local.route_53_health_check_urls) > 0 ? aws_route53_health_check.url : {}
 

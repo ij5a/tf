@@ -248,7 +248,7 @@ variable "enable_cloudfront" {
 }
 
 variable "enable_cloudwatch_alarms" {
-  description = "Enable CloudWatch alarm rules for CloudFront/ECS/Route53 (alerts only; dashboard is gated separately by enable_cloudwatch_dashboard)"
+  description = "Enable CloudWatch alarm rules for CloudFront, ECS, ALB, and log metrics (alerts only; dashboard is gated separately by enable_cloudwatch_dashboard)"
   type        = bool
   default     = true
 }
