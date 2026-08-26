@@ -55,7 +55,7 @@ module "vpn_peer_dead_alarm" {
   source              = var.module_sources.cloudwatch.source
   version             = var.module_sources.cloudwatch.version
   alarm_name          = "${var.tags.project}-${var.tags.environment}-vpn-peer-dead-events-alarm"
-  alarm_description   = "The VPN link to SITE-A or SITE-B reported the peer as dead, and if banks or stores report brief errors around this time, this may be the cause. When this alarm clears, it only means no new reports that the peer is dead arrived, not that the link is back up."
+  alarm_description   = "The VPN link to SITE-A or SITE-B reported the other side as dead. Traffic to that peer may have been interrupted at that time."
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 1
   datapoints_to_alarm = 1
@@ -67,7 +67,6 @@ module "vpn_peer_dead_alarm" {
   treat_missing_data  = "notBreaching"
 
   alarm_actions = var.enable_slack_notifications ? [module.notify_slack_vpn_flap[0].slack_topic_arn] : []
-  ok_actions    = var.enable_slack_notifications ? [module.notify_slack_vpn_flap[0].slack_topic_arn] : []
 
   depends_on = [aws_cloudwatch_log_metric_filter.vpn_peer_dead_events]
 }
