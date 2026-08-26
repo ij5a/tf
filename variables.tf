@@ -457,6 +457,11 @@ variable "enable_alert_notifications" {
   description = "Enable Slack alert notifications (CloudWatch alarms, GuardDuty findings)"
   type        = bool
   default     = true
+
+  validation {
+    condition     = var.enable_alert_notifications || !var.enable_slack_notifications
+    error_message = "Alarm actions still point to the alerts Slack topic. Turning off alert notifications while Slack notifications are on leaves them pointing at nothing."
+  }
 }
 
 variable "enable_deployment_notifications" {
