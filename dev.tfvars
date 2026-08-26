@@ -10,15 +10,16 @@ aws_profile = "acme-dev"
 domain_name = "dev.example.com"
 
 # Optional features off in dev to keep it cheap.
-enable_nlb                   = false
-enable_waf                   = false
-enable_guardduty             = false
-enable_account_security      = false
-enable_dms                   = false
-enable_cloudwatch_dashboard  = false
-enable_pagerduty             = false
-enable_vpn_alarms            = false
-use_twingate_transit_gateway = false
+enable_nlb                             = false
+enable_waf                             = false
+enable_guardduty                       = false
+enable_account_security                = false
+enable_dms                             = false
+enable_cloudwatch_dashboard            = false
+cloudwatch_log_group_retention_in_days = 1
+enable_pagerduty                       = false
+enable_vpn_alarms                      = false
+use_twingate_transit_gateway           = false
 
 # TLS on the CloudFront→ALB and ALB→ECS hops stays on even in dev.
 enable_https_origin = true

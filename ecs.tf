@@ -237,14 +237,15 @@ module "ecs_service" {
 
   container_definitions = merge({
     (each.key) = {
-      cpu                       = var.use_service_specs ? split(":", local.service_specs[each.key])[0] : null
-      memory                    = var.use_service_specs ? split(":", local.service_specs[each.key])[1] : null
-      memoryReservation         = var.use_service_specs ? split(":", local.service_specs[each.key])[1] : null
-      enable_cloudwatch_logging = var.enable_cloudwatch_logging
-      cloudwatch_log_group_name = "${var.tags.project}-${var.tags.environment}-${each.key}"
-      essential                 = true
-      image                     = var.tags.environment == "dev" ? "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com/acme-platform-image:${local.service_repositories[each.key]}-latest" : "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com/acme-platform-image:${var.tags.environment}-${local.service_repositories[each.key]}-latest"
-      readonlyRootFilesystem    = false
+      cpu                                    = var.use_service_specs ? split(":", local.service_specs[each.key])[0] : null
+      memory                                 = var.use_service_specs ? split(":", local.service_specs[each.key])[1] : null
+      memoryReservation                      = var.use_service_specs ? split(":", local.service_specs[each.key])[1] : null
+      enable_cloudwatch_logging              = var.enable_cloudwatch_logging
+      cloudwatch_log_group_name              = "${var.tags.project}-${var.tags.environment}-${each.key}"
+      cloudwatch_log_group_retention_in_days = var.cloudwatch_log_group_retention_in_days
+      essential                              = true
+      image                                  = var.tags.environment == "dev" ? "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com/acme-platform-image:${local.service_repositories[each.key]}-latest" : "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com/acme-platform-image:${var.tags.environment}-${local.service_repositories[each.key]}-latest"
+      readonlyRootFilesystem                 = false
 
       environment = each.key != "pr" && each.key != "authenticator" && !strcontains(each.key, "apigw") ? concat(
         local.env_vars_final[each.key],
