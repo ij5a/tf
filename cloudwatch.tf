@@ -411,6 +411,31 @@ module "alb_unhealthy_host_alarm" {
   }
 }
 
+# ALB response-time alarm for slow app responses. qa/preprod/prod only; dev is noise.
+module "alb_response_time_alarm" {
+  count                                 = var.enable_cloudwatch_alarms && var.enable_alb && local.alb_arn_suffix != null && contains(["qa", "preprod", "prod"], var.tags.environment) ? 1 : 0
+  source                                = var.module_sources.cloudwatch.source
+  version                               = var.module_sources.cloudwatch.version
+  alarm_name                            = "${var.tags.project}-${var.tags.environment}-alb-response-time-alarm"
+  alarm_description                     = "Users are waiting ${var.alb_response_time_alarm_threshold} seconds or more for the app to respond (slowest 5% of requests, in 2 of the last 3 five-minute windows). The app is up but very slow."
+  comparison_operator                   = "GreaterThanOrEqualToThreshold"
+  evaluation_periods                    = 3
+  datapoints_to_alarm                   = 2
+  threshold                             = var.alb_response_time_alarm_threshold
+  period                                = 300
+  namespace                             = "AWS/ApplicationELB"
+  metric_name                           = "TargetResponseTime"
+  extended_statistic                    = "p95"
+  evaluate_low_sample_count_percentiles = "ignore"
+  treat_missing_data                    = "notBreaching"
+  alarm_actions                         = var.enable_slack_notifications ? [module.notify_slack["alerts"].slack_topic_arn] : []
+  ok_actions                            = var.enable_slack_notifications ? [module.notify_slack["alerts"].slack_topic_arn] : []
+
+  dimensions = {
+    LoadBalancer = local.alb_arn_suffix
+  }
+}
+
 # audit carries the statement text; slowquery is covered up front so it is masked from day one if slow query logging is ever turned on.
 # Both groups are only created in prod, so the masking shares that gate. error is left out — no statement text in it.
 resource "aws_cloudwatch_log_data_protection_policy" "aurora_statement_logs" {

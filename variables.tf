@@ -271,6 +271,12 @@ variable "alb_target_5xx_alarm_threshold" {
   default     = 10
 }
 
+variable "alb_response_time_alarm_threshold" {
+  description = "ALB TargetResponseTime in seconds before the p95 response-time alarm fires (2 of 3 five-minute windows must breach)."
+  type        = number
+  default     = 5
+}
+
 variable "enable_cloudwatch_logging" {
   description = "Determines whether CloudWatch logging is configured for this container definition."
   type        = bool
