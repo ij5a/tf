@@ -31,7 +31,6 @@ cloudwatch_log_group_retention_in_days = 90
 enable_vpn_alarms                      = true
 
 # Aurora Serverless v2, 2 instances, sized for prod.
-container_insights    = "enabled"
 aurora_instance_count = 2
 serverless_aurora_scaling_configuration = {
   min_capacity = 4

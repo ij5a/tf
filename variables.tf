@@ -290,13 +290,13 @@ variable "enable_ecs" {
 }
 
 variable "container_insights" {
-  description = "ECS Container Insights mode (enhanced, enabled, or disabled). null = env default: prod gets enhanced, other envs enabled."
+  description = "ECS Container Insights mode (enhanced, enabled, or disabled). null = enabled."
   type        = string
   default     = null
 
   validation {
     condition     = var.container_insights == null || contains(["enhanced", "enabled", "disabled"], var.container_insights)
-    error_message = "container_insights must be enhanced, enabled, or disabled (or null for the env default)."
+    error_message = "container_insights must be enhanced, enabled, or disabled, or null to use enabled."
   }
 }
 
