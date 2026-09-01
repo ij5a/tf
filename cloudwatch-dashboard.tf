@@ -26,7 +26,8 @@ locals {
     [for a in module.high_usage_alarm : try(a.cloudwatch_metric_alarm_arn, "")],
     [for a in module.low_usage_alarm : try(a.cloudwatch_metric_alarm_arn, "")],
     [for a in module.route53_health_check_alarm : try(a.cloudwatch_metric_alarm_arn, "")],
-    [for a in module.data_replication_failure_alarm : try(a.cloudwatch_metric_alarm_arn, "")]
+    [for a in module.data_replication_failure_alarm : try(a.cloudwatch_metric_alarm_arn, "")],
+    [for a in module.unique_violation_error_alarm : try(a.cloudwatch_metric_alarm_arn, "")]
   ))
 
   # path → display label for the hero uptime gauges; falls back to the path itself for unmapped paths

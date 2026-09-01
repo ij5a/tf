@@ -213,6 +213,47 @@ module "data_replication_failure_alarm" {
   depends_on = [aws_cloudwatch_log_metric_filter.data_replication_failure]
 }
 
+# Critical: central failed a database write because a record with the same key already exists.
+# Match $.error.name only; prod logs thousands of benign info-level "UniqueViolationError returned. Retrying" lines.
+resource "aws_cloudwatch_log_metric_filter" "unique_violation_error" {
+  count          = var.enable_cloudwatch_alarms && var.enable_cloudwatch_logging && contains(var.services, "central") ? 1 : 0
+  name           = "${var.tags.project}-${var.tags.environment}-unique-violation-error"
+  log_group_name = "${var.tags.project}-${var.tags.environment}-central"
+  pattern        = "{ $.error.name = \"UniqueViolationError\" }"
+
+  metric_transformation {
+    name          = "UniqueViolationErrors"
+    namespace     = "acme/${var.tags.project}-${var.tags.environment}"
+    value         = "1"
+    default_value = "0"
+    unit          = "Count"
+  }
+
+  depends_on = [module.ecs_service]
+}
+
+module "unique_violation_error_alarm" {
+  count               = var.enable_cloudwatch_alarms && var.enable_cloudwatch_logging && contains(var.services, "central") ? 1 : 0
+  source              = var.module_sources.cloudwatch.source
+  version             = var.module_sources.cloudwatch.version
+  alarm_name          = "${var.tags.project}-${var.tags.environment}-unique-violation-error-alarm"
+  alarm_description   = "Central cannot insert a record because the database already has one with the same key. The insert fails, so central does not save that data."
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  datapoints_to_alarm = 1
+  threshold           = 1
+  period              = 60
+  namespace           = "acme/${var.tags.project}-${var.tags.environment}"
+  metric_name         = "UniqueViolationErrors"
+  statistic           = "Sum"
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = var.enable_slack_notifications ? [module.notify_slack["alerts"].slack_topic_arn] : []
+  ok_actions    = var.enable_slack_notifications ? [module.notify_slack["alerts"].slack_topic_arn] : []
+
+  depends_on = [aws_cloudwatch_log_metric_filter.unique_violation_error]
+}
+
 # Alarms when the PR service can't reach the upstream API: refreshExternalInfo calls time out (10s axios timeout).
 resource "aws_cloudwatch_log_metric_filter" "pr_upstream_api_timeout" {
   count          = var.enable_cloudwatch_alarms && var.enable_cloudwatch_logging && contains(var.services, "pr") ? 1 : 0
