@@ -7,15 +7,15 @@ variable "module_sources" {
   default = {
     alb = {
       source  = "terraform-aws-modules/alb/aws"
-      version = "~> 10.5.0"
+      version = "~> 10.5.1"
     }
     cloudfront = {
       source  = "terraform-aws-modules/cloudfront/aws"
-      version = "~> 6.7.0"
+      version = "~> 6.7.1"
     }
     cloudwatch = {
       source  = "terraform-aws-modules/cloudwatch/aws//modules/metric-alarm"
-      version = "~> 5.7.2"
+      version = "~> 5.7.3"
     }
     ecs_cluster = {
       source  = "terraform-aws-modules/ecs/aws//modules/cluster"
@@ -35,11 +35,11 @@ variable "module_sources" {
     }
     iam_policy = {
       source  = "terraform-aws-modules/iam/aws//modules/iam-policy"
-      version = "~> 6.8.0"
+      version = "~> 6.8.1"
     }
     iam_role = {
       source  = "terraform-aws-modules/iam/aws//modules/iam-role"
-      version = "~> 6.8.0"
+      version = "~> 6.8.1"
     }
     lambda = {
       source  = "terraform-aws-modules/lambda/aws"
@@ -71,7 +71,7 @@ variable "module_sources" {
     }
     vpc = {
       source  = "terraform-aws-modules/vpc/aws"
-      version = "~> 6.7.0"
+      version = "~> 6.7.2"
     }
   }
 }
