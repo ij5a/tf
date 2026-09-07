@@ -309,7 +309,7 @@ module "cdn" {
 
 # Standalone phpMyAdmin front door. Separate from module.cdn (apigw): single default behavior to
 # the dedicated internal ALB, gated by its own CF-WAF. Interim - destroys when enable_standalone_phpmyadmin flips.
-# ponytail: PriceClass_100 - interim internal tool gated to one Twingate IP, not the global client front door.
+# PriceClass_100 - interim internal tool gated to one Twingate IP, not the global client front door.
 module "cdn_phpmyadmin" {
   source  = var.module_sources.cloudfront.source
   version = var.module_sources.cloudfront.version
@@ -351,7 +351,7 @@ module "cdn_phpmyadmin" {
     }
   }
 
-  # ponytail: single default behavior to the ALB - no ordered behaviors, no SPA function, no second origin
+  # single default behavior to the ALB - no ordered behaviors, no SPA function, no second origin
   default_cache_behavior = {
     allowed_methods            = ["GET", "HEAD", "OPTIONS", "PUT", "PATCH", "POST", "DELETE"]
     cache_policy_id            = data.aws_cloudfront_cache_policy.caching_disabled.id
