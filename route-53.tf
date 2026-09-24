@@ -121,6 +121,17 @@ resource "aws_route53_record" "additional_www" {
   }
 }
 
+# NOTE: parent-zone records. They stop resolving once the env gets its own delegated child zone, so move them in that change.
+resource "aws_route53_record" "nlb_cname" {
+  for_each = var.nlb_cnames
+  provider = aws.main
+  zone_id  = var.additional_main_route_53_zone_id
+  name     = each.key
+  type     = "CNAME"
+  ttl      = 300
+  records  = [each.value]
+}
+
 # One-time parent zone for the aws.example.com dual-run, owned by the acme-sandbox state.
 # prevent_destroy: sandbox destroy is a documented workflow and would orphan the registrar NS delegation.
 resource "aws_route53_zone" "additional_parent" {

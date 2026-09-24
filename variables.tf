@@ -990,9 +990,15 @@ variable "additional_main_route_53_zone_id" {
 }
 
 variable "nlb_cert_wildcard" {
-  description = "Wildcard SAN added to the example.com NLB cert. Empty means no cert."
+  description = "Wildcard SAN added to the example.com cert for the legacy EKS NLBs. Empty means no cert."
   type        = string
   default     = ""
+}
+
+variable "nlb_cnames" {
+  description = "example.com hostname to legacy EKS NLB hostname. Written into the parent zone in the main account."
+  type        = map(string)
+  default     = {}
 }
 
 variable "route_53_health_check_urls" {
