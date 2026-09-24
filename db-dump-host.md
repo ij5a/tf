@@ -4,7 +4,7 @@ Temporary EC2 box for dumping a table and handing the file to someone else. SSM 
 
 Turn it on per env with `enable_db_dump_host = true` and set `db_dump_host_config` in that env's tfvars. Turn it off and everything is destroyed, bucket contents included.
 
-The host runs on a schedule (default 16:00 to 00:00 PHT). Outside the window it is stopped. Start a long dump early enough to finish, or it gets cut off.
+The host stops on a schedule (default 00:00 PHT). Start it by hand before the dump. Start a long dump early enough to finish, or it gets cut off.
 
 ## 1. Get the details
 
@@ -17,7 +17,7 @@ Replace `<env>` with the environment, for example `acme-prod`:
 
 The AWS profile and region for the env are in `aws-profiles.json` and its tfvars.
 
-## 2. Start it if it is outside the window
+## 2. Start it
 
 ```bash
 aws ec2 start-instances --instance-ids <instance-id> --profile <profile> --region <region>

@@ -33,6 +33,51 @@ module "vpc" {
   single_nat_gateway     = local.is_prod && var.enable_ecs
   one_nat_gateway_per_az = false
 
+  private_dedicated_network_acl = var.enable_private_nacl
+
+  # Replies to private hosts use the origin server's address, not the NAT instance's.
+  # Keep the 3306 and 6379 denies ahead of wide rule 130.
+  private_inbound_acl_rules = [
+    {
+      rule_number = 100
+      rule_action = "allow"
+      protocol    = "-1"
+      cidr_block  = "${local.envs["${var.tags.project}-${var.tags.environment}"]["cidr_prefix"]}.0.0/16"
+    },
+    {
+      rule_number = 110
+      rule_action = "deny"
+      protocol    = "tcp"
+      from_port   = 3306
+      to_port     = 3306
+      cidr_block  = "0.0.0.0/0"
+    },
+    {
+      rule_number = 120
+      rule_action = "deny"
+      protocol    = "tcp"
+      from_port   = 6379
+      to_port     = 6379
+      cidr_block  = "0.0.0.0/0"
+    },
+    {
+      rule_number = 130
+      rule_action = "allow"
+      protocol    = "tcp"
+      from_port   = 1024
+      to_port     = 65535
+      cidr_block  = "0.0.0.0/0"
+    },
+    {
+      rule_number = 140
+      rule_action = "allow"
+      protocol    = "icmp"
+      icmp_type   = 3
+      icmp_code   = 4
+      cidr_block  = "0.0.0.0/0"
+    },
+  ]
+
   enable_flow_log                      = var.enable_vpc_flow_logs
   create_flow_log_cloudwatch_iam_role  = false
   create_flow_log_cloudwatch_log_group = false

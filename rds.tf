@@ -101,7 +101,7 @@ module "aurora_mysql_v2" {
   version                                       = var.module_sources.rds_aurora.version
   for_each                                      = local.aurora_cluster_keys
   apply_immediately                             = true
-  backup_retention_period                       = 7
+  backup_retention_period                       = var.aurora_backup_retention_period
   cluster_performance_insights_enabled          = true
   cluster_performance_insights_kms_key_id       = data.aws_kms_key.rds_default.arn
   cluster_performance_insights_retention_period = 7

@@ -7,11 +7,11 @@ variable "module_sources" {
   default = {
     iam_policy = {
       source  = "terraform-aws-modules/iam/aws//modules/iam-policy"
-      version = "~> 6.8.1"
+      version = "~> 6.8.2"
     }
     iam_role = {
       source  = "terraform-aws-modules/iam/aws//modules/iam-role"
-      version = "~> 6.8.1"
+      version = "~> 6.8.2"
     }
   }
 }

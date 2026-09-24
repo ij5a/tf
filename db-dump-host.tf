@@ -220,9 +220,9 @@ data "aws_iam_policy_document" "db_dump_host_scheduler" {
   count = var.enable_db_dump_host ? 1 : 0
 
   statement {
-    sid       = "StartStopDumpHost"
+    sid       = "StopDumpHost"
     effect    = "Allow"
-    actions   = ["ec2:StartInstances", "ec2:StopInstances"]
+    actions   = ["ec2:StopInstances"]
     resources = [aws_instance.db_dump_host[0].arn]
   }
 
@@ -238,7 +238,6 @@ data "aws_iam_policy_document" "db_dump_host_scheduler" {
     effect  = "Allow"
     actions = ["ssm:StartAutomationExecution"]
     resources = [
-      "arn:aws:ssm:${data.aws_region.current.region}::document/AWS-StartEC2Instance",
       "arn:aws:ssm:${data.aws_region.current.region}::document/AWS-StopEC2Instance",
       "arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:automation-execution/*",
     ]
@@ -303,17 +302,7 @@ module "db_dump_host_scheduler_role" {
   }
 }
 
-# Default crons are UTC; timezone reinterprets them, so restate them in local time.
-resource "aws_ssm_maintenance_window" "db_dump_host_start" {
-  count             = var.enable_db_dump_host ? 1 : 0
-  name              = "${var.tags.project}-${var.tags.environment}-db-dump-start"
-  description       = "Start DB dump host"
-  schedule          = var.db_dump_host_config.schedule.start
-  schedule_timezone = var.db_dump_host_config.schedule.timezone
-  duration          = 1
-  cutoff            = 0
-}
-
+# Default cron is UTC; timezone reinterprets it, so restate it in local time.
 resource "aws_ssm_maintenance_window" "db_dump_host_stop" {
   count             = var.enable_db_dump_host ? 1 : 0
   name              = "${var.tags.project}-${var.tags.environment}-db-dump-stop"
@@ -322,19 +311,6 @@ resource "aws_ssm_maintenance_window" "db_dump_host_stop" {
   schedule_timezone = var.db_dump_host_config.schedule.timezone
   duration          = 1
   cutoff            = 0
-}
-
-resource "aws_ssm_maintenance_window_target" "db_dump_host_start" {
-  count         = var.enable_db_dump_host ? 1 : 0
-  window_id     = aws_ssm_maintenance_window.db_dump_host_start[0].id
-  name          = "${var.tags.project}-${var.tags.environment}-db-dump-start-target"
-  description   = "DB dump host start target"
-  resource_type = "INSTANCE"
-
-  targets {
-    key    = "InstanceIds"
-    values = [aws_instance.db_dump_host[0].id]
-  }
 }
 
 resource "aws_ssm_maintenance_window_target" "db_dump_host_stop" {
@@ -347,40 +323,6 @@ resource "aws_ssm_maintenance_window_target" "db_dump_host_stop" {
   targets {
     key    = "InstanceIds"
     values = [aws_instance.db_dump_host[0].id]
-  }
-}
-
-resource "aws_ssm_maintenance_window_task" "db_dump_host_start" {
-  count            = var.enable_db_dump_host ? 1 : 0
-  name             = "${var.tags.project}-${var.tags.environment}-db-dump-start-task"
-  description      = "Start DB dump host"
-  max_concurrency  = 1
-  max_errors       = 1
-  priority         = 1
-  task_arn         = "AWS-StartEC2Instance"
-  task_type        = "AUTOMATION"
-  service_role_arn = module.db_dump_host_scheduler_role[0].arn
-  window_id        = aws_ssm_maintenance_window.db_dump_host_start[0].id
-
-  targets {
-    key    = "WindowTargetIds"
-    values = [aws_ssm_maintenance_window_target.db_dump_host_start[0].id]
-  }
-
-  task_invocation_parameters {
-    automation_parameters {
-      document_version = "$LATEST"
-
-      parameter {
-        name   = "AutomationAssumeRole"
-        values = [module.db_dump_host_scheduler_role[0].arn]
-      }
-
-      parameter {
-        name   = "InstanceId"
-        values = ["{{ RESOURCE_ID }}"]
-      }
-    }
   }
 }
 

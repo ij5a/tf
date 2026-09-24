@@ -153,7 +153,7 @@ module "s3_bucket" {
   logging = local.is_prod ? {
     target_bucket = module.s3_access_logs[0].s3_bucket_id
     target_prefix = "${each.key}/"
-  } : {}
+  } : null
 
   server_side_encryption_configuration = {
     rule = {

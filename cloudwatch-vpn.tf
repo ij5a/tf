@@ -13,7 +13,7 @@ module "vpn_tunnel_down_alarm" {
   source              = var.module_sources.cloudwatch.source
   version             = var.module_sources.cloudwatch.version
   alarm_name          = "${var.tags.project}-${var.tags.environment}-legacy-vpn-${each.key}-tunnel-down-alarm"
-  alarm_description   = "The VPN link to ${each.value.peer} is down. Traffic to ${each.value.peer} cannot get through. This VPN is built with only one link on purpose, so there is no backup."
+  alarm_description   = "The VPN link to ${each.value.peer} went down, or stopped reporting, in each of the last three 5-minute checks. Traffic to ${each.value.peer} may not get through. This VPN is built with only one link on purpose, so there is no backup."
   comparison_operator = "LessThanThreshold"
   evaluation_periods  = 3
   datapoints_to_alarm = 3

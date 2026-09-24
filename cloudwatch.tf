@@ -41,7 +41,7 @@ module "high_usage_alarm" {
   source              = var.module_sources.cloudwatch.source
   version             = var.module_sources.cloudwatch.version
   alarm_name          = "${var.tags.project}-${var.tags.environment}-high-${each.key}-alarm"
-  alarm_description   = "Service ${each.value.service} is using more than half its ${strcontains(each.key, "cpu") ? "CPU" : "memory"} for 3 minutes. It may slow down if this keeps climbing."
+  alarm_description   = "Service ${each.value.service} is using half or more of its ${strcontains(each.key, "cpu") ? "CPU" : "memory"} for 3 minutes. It may slow down if this keeps climbing."
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 3
   datapoints_to_alarm = 3
@@ -59,6 +59,38 @@ module "high_usage_alarm" {
     ClusterName = "${var.tags.project}-${var.tags.environment}"
     ServiceName = each.value.service
   }
+}
+
+module "database_alarm" {
+  for_each = var.enable_database_alarms && local.is_prod ? {
+    for pair in setproduct(keys(module.aurora_mysql_v2), keys(local.database_alarm_metrics)) :
+    "${pair[0]}-${pair[1]}" => merge(
+      local.database_alarm_metrics[pair[1]],
+      {
+        cluster_id = module.aurora_mysql_v2[pair[0]].cluster_id
+        dimensions = lookup(local.database_alarm_metrics[pair[1]], "dimensions", {})
+      }
+    )
+  } : {}
+
+  source              = var.module_sources.cloudwatch.source
+  version             = var.module_sources.cloudwatch.version
+  alarm_name          = "${var.tags.project}-${var.tags.environment}-database-${each.key}-alarm"
+  alarm_description   = each.value.description
+  comparison_operator = each.value.comparison_operator
+  evaluation_periods  = each.value.evaluation_periods
+  datapoints_to_alarm = each.value.datapoints_to_alarm
+  threshold           = each.value.threshold
+  period              = each.value.period
+  unit                = each.value.unit
+  namespace           = "AWS/RDS"
+  metric_name         = each.value.metric_name
+  statistic           = each.value.statistic
+  alarm_actions       = contains(keys(module.notify_slack), "alerts") ? [module.notify_slack["alerts"].slack_topic_arn] : []
+  ok_actions          = contains(keys(module.notify_slack), "alerts") ? [module.notify_slack["alerts"].slack_topic_arn] : []
+  treat_missing_data  = "breaching"
+
+  dimensions = merge({ DBClusterIdentifier = each.value.cluster_id }, each.value.dimensions)
 }
 
 # per-service zero-task alarm; prod-only because dev/qa clusters disable Container Insights
@@ -98,6 +130,34 @@ locals {
     "cloudfront-total5xxerrorrate" = {
       metric_name = "5xxErrorRate", threshold = 70, unit = "Percent"
       description = "Website: most requests are failing on our side (70%+ for 3 minutes). The site is likely down for users."
+    }
+  }
+
+  database_alarm_metrics = {
+
+    # Writer Average smooths brief spikes without dilution from idle readers.
+    "acu-utilization" = {
+      metric_name         = "ACUUtilization"
+      comparison_operator = "GreaterThanOrEqualToThreshold"
+      threshold           = 90
+      period              = 300
+      evaluation_periods  = 2
+      datapoints_to_alarm = 2
+      unit                = "Percent"
+      statistic           = "Average"
+      description         = "The database is near its capacity limit, or monitoring data is missing. The app may slow down."
+      dimensions          = { Role = "WRITER" }
+    }
+    "select-latency" = {
+      metric_name         = "SelectLatency"
+      comparison_operator = "GreaterThanOrEqualToThreshold"
+      threshold           = 10
+      period              = 300
+      evaluation_periods  = 3
+      datapoints_to_alarm = 3
+      unit                = "Milliseconds"
+      statistic           = "Average"
+      description         = "Database select latency is at or above 10 milliseconds for 15 minutes."
     }
   }
 
@@ -198,8 +258,8 @@ module "data_replication_failure_alarm" {
   alarm_name          = "${var.tags.project}-${var.tags.environment}-data-replication-failure-alarm"
   alarm_description   = "Data replication error: Central -> PR -> the upstream API."
   comparison_operator = "GreaterThanOrEqualToThreshold"
-  evaluation_periods  = 1
-  datapoints_to_alarm = 1
+  evaluation_periods  = 5
+  datapoints_to_alarm = 3
   threshold           = var.data_replication_failure_alarm_threshold
   period              = 60
   namespace           = "acme/${var.tags.project}-${var.tags.environment}"
@@ -239,8 +299,8 @@ module "unique_violation_error_alarm" {
   alarm_name          = "${var.tags.project}-${var.tags.environment}-unique-violation-error-alarm"
   alarm_description   = "Central cannot insert a record because the database already has one with the same key. The insert fails, so central does not save that data."
   comparison_operator = "GreaterThanOrEqualToThreshold"
-  evaluation_periods  = 1
-  datapoints_to_alarm = 1
+  evaluation_periods  = 5
+  datapoints_to_alarm = 3
   threshold           = 1
   period              = 60
   namespace           = "acme/${var.tags.project}-${var.tags.environment}"
@@ -433,7 +493,7 @@ module "alb_unhealthy_host_alarm" {
   source              = var.module_sources.cloudwatch.source
   version             = var.module_sources.cloudwatch.version
   alarm_name          = "${var.tags.project}-${var.tags.environment}-alb-${each.key}-unhealthy-host-alarm"
-  alarm_description   = "At least one copy of ${each.key} stopped responding for 3 minutes. Traffic goes to the copies that still work."
+  alarm_description   = "The load balancer has seen at least one unhealthy copy of ${each.key} for the last 3 minutes. If other copies are healthy, traffic goes to them."
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 3
   datapoints_to_alarm = 3

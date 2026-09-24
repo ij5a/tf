@@ -19,11 +19,11 @@ variable "module_sources" {
     }
     ecs_cluster = {
       source  = "terraform-aws-modules/ecs/aws//modules/cluster"
-      version = "~> 7.6.0"
+      version = "~> 7.6.1"
     }
     ecs_service = {
       source  = "terraform-aws-modules/ecs/aws//modules/service"
-      version = "~> 7.6.0"
+      version = "~> 7.6.1"
     }
     elasticache = {
       source  = "terraform-aws-modules/elasticache/aws"
@@ -35,15 +35,15 @@ variable "module_sources" {
     }
     iam_policy = {
       source  = "terraform-aws-modules/iam/aws//modules/iam-policy"
-      version = "~> 6.8.1"
+      version = "~> 6.8.2"
     }
     iam_role = {
       source  = "terraform-aws-modules/iam/aws//modules/iam-role"
-      version = "~> 6.8.1"
+      version = "~> 6.8.2"
     }
     lambda = {
       source  = "terraform-aws-modules/lambda/aws"
-      version = "~> 8.8.1"
+      version = "~> 8.8.2"
     }
     notify_slack = {
       source  = "terraform-aws-modules/notify-slack/aws"
@@ -51,19 +51,19 @@ variable "module_sources" {
     }
     rds = {
       source  = "terraform-aws-modules/rds/aws"
-      version = "~> 7.2.1"
+      version = "~> 7.2.2"
     }
     rds_aurora = {
       source  = "terraform-aws-modules/rds-aurora/aws"
-      version = "~> 10.3.1"
+      version = "~> 10.4.1"
     }
     s3_bucket = {
       source  = "terraform-aws-modules/s3-bucket/aws"
-      version = "~> 5.15.4"
+      version = "~> 5.16.1"
     }
     secrets_manager = {
       source  = "terraform-aws-modules/secrets-manager/aws"
-      version = "~> 2.1.0"
+      version = "~> 2.1.1"
     }
     security_group = {
       source  = "terraform-aws-modules/security-group/aws"
@@ -71,7 +71,7 @@ variable "module_sources" {
     }
     vpc = {
       source  = "terraform-aws-modules/vpc/aws"
-      version = "~> 6.7.2"
+      version = "~> 6.7.3"
     }
   }
 }
@@ -204,9 +204,9 @@ variable "enable_db_dump_host" {
   default     = false
 }
 
-# Default crons are UTC; timezone reinterprets them, so restate them in local time.
+# Default cron is UTC; timezone reinterprets it, so restate it in local time.
 variable "db_dump_host_config" {
-  description = "Settings for the dump host. db_endpoint and db_security_group_ids name the target DB. instance_type must be arm64. subnet_id null = first private subnet. Default crons are UTC; timezone reinterprets them, so restate crons in local time."
+  description = "Settings for the dump host. db_endpoint and db_security_group_ids name the target DB. instance_type must be arm64. subnet_id null = first private subnet. Default stop cron is UTC; timezone reinterprets it, so restate it in local time."
   type = object({
     db_endpoint           = optional(string, "")
     db_security_group_ids = optional(list(string), [])
@@ -215,7 +215,6 @@ variable "db_dump_host_config" {
     subnet_id             = optional(string)
     dump_expiry_days      = optional(number, 7)
     schedule = optional(object({
-      start    = optional(string, "cron(0 8 ? * * *)")
       stop     = optional(string, "cron(0 16 ? * * *)")
       timezone = optional(string)
     }), {})
@@ -253,6 +252,12 @@ variable "enable_cloudwatch_alarms" {
   default     = true
 }
 
+variable "enable_database_alarms" {
+  description = "Enable CloudWatch alarms for tofu-managed production Aurora clusters"
+  type        = bool
+  default     = false
+}
+
 variable "enable_cloudwatch_dashboard" {
   description = "Enable the per-environment CloudWatch overview dashboard (aws_cloudwatch_dashboard.main)"
   type        = bool
@@ -260,7 +265,7 @@ variable "enable_cloudwatch_dashboard" {
 }
 
 variable "data_replication_failure_alarm_threshold" {
-  description = "Matching central log lines per minute before the data replication alarm fires. Raise per-env where task churn makes the default too twitchy."
+  description = "Matching central log lines per period that make a datapoint breach. 3 of 5 datapoints must breach to alarm."
   type        = number
   default     = 1
 }
@@ -338,6 +343,12 @@ variable "nlb_name_suffix" {
 
 variable "enable_phpmyadmin" {
   description = "Enable phpMyAdmin for database management"
+  type        = bool
+  default     = false
+}
+
+variable "enable_private_nacl" {
+  description = "Give the private subnets their own network ACL instead of the VPC default."
   type        = bool
   default     = false
 }
@@ -619,7 +630,7 @@ variable "phpmyadmin_image" {
 variable "iso8583_playground_image" {
   description = "Docker image for iso8583-playground"
   type        = string
-  default     = "333333333333.dkr.ecr.sa-east-1.amazonaws.com/tools/iso8583-playground:v0.1.3-20260612-03"
+  default     = "333333333333.dkr.ecr.sa-east-1.amazonaws.com/tools/iso8583-playground:v0.1.6-20260915-00"
 }
 
 variable "region" {
@@ -670,6 +681,12 @@ variable "aurora_reader_promotion_tier" {
   description = "Failover promotion tier applied to every Aurora cluster instance. Only readers consult it: tiers 2-15 let a serverless reader scale on its own load instead of mirroring writer capacity like the tier 0-1 default; writers ignore it. null keeps the provider default (tier 0)."
   type        = number
   default     = null
+}
+
+variable "aurora_backup_retention_period" {
+  description = "Days of automated Aurora backups to keep."
+  type        = number
+  default     = 7
 }
 
 variable "pr_aurora_instance_count" {
@@ -970,6 +987,12 @@ variable "additional_main_route_53_zone_id" {
   description = "Zone ID of the aws.example.com parent zone in the master payer account; receives the additional domain's NS delegation."
   type        = string
   default     = "Z0234567890KLMNOPQRST"
+}
+
+variable "nlb_cert_wildcard" {
+  description = "Wildcard SAN added to the example.com NLB cert. Empty means no cert."
+  type        = string
+  default     = ""
 }
 
 variable "route_53_health_check_urls" {
