@@ -43,7 +43,7 @@ variable "module_sources" {
     }
     lambda = {
       source  = "terraform-aws-modules/lambda/aws"
-      version = "~> 8.8.2"
+      version = "~> 8.9.0"
     }
     notify_slack = {
       source  = "terraform-aws-modules/notify-slack/aws"
