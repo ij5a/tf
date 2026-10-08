@@ -93,26 +93,26 @@ module "database_alarm" {
   dimensions = merge({ DBClusterIdentifier = each.value.cluster_id }, each.value.dimensions)
 }
 
-# per-service zero-task alarm; prod-only because dev/qa clusters disable Container Insights
-# (metric absent) and scale to zero off-hours by design
+# per-service zero-task alarm; prod-only because dev/qa scale to zero off-hours.
+# ECS sends no CPU datapoint for a service with 0 tasks, so missing data = down.
 module "low_usage_alarm" {
-  for_each            = var.enable_cloudwatch_alarms && var.enable_ecs && !var.enable_standalone_phpmyadmin && local.is_prod && local.container_insights != "disabled" ? toset(local.ecs_services_no_spa) : toset([])
+  for_each            = var.enable_cloudwatch_alarms && var.enable_ecs && !var.enable_standalone_phpmyadmin && local.is_prod ? toset(local.ecs_services_no_spa) : toset([])
   source              = var.module_sources.cloudwatch.source
   version             = var.module_sources.cloudwatch.version
   alarm_name          = "${var.tags.project}-${var.tags.environment}-low-ecs-taskcount-${each.key}-alarm"
-  alarm_description   = "Service ${each.key} has no copies running for 3 minutes. This part of the app is down."
+  alarm_description   = "Service ${each.key} has no copies running, or ECS stopped sending its metrics. Check this part of the app."
   comparison_operator = "LessThanOrEqualToThreshold"
   evaluation_periods  = 3
   datapoints_to_alarm = 3
   threshold           = 0
   period              = 60
   unit                = null
-  namespace           = "ECS/ContainerInsights"
-  metric_name         = "RunningTaskCount"
-  statistic           = "Minimum"
+  namespace           = "AWS/ECS"
+  metric_name         = "CPUUtilization"
+  statistic           = "SampleCount"
   alarm_actions       = var.enable_slack_notifications ? [module.notify_slack["alerts"].slack_topic_arn] : []
   ok_actions          = var.enable_slack_notifications ? [module.notify_slack["alerts"].slack_topic_arn] : []
-  treat_missing_data  = "notBreaching"
+  treat_missing_data  = "breaching"
 
   dimensions = {
     ClusterName = "${var.tags.project}-${var.tags.environment}"

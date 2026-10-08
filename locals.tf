@@ -1,7 +1,7 @@
 locals {
   is_prod = var.tags.environment == "prod"
 
-  # effective cluster Container Insights level; the zero-task alarm gate reuses it (those metrics only exist when not "disabled")
+  # effective cluster Container Insights level
   container_insights = coalesce(var.container_insights, "enabled")
 
   # 5-min SAT,SUN re-zero; envs opt out with autoscaling_schedule.weekend_guard = false

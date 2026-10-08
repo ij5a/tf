@@ -357,12 +357,13 @@ resource "aws_security_group" "phpmyadmin_standalone_alb" {
 }
 
 resource "aws_lb" "phpmyadmin_standalone" {
-  count              = var.enable_standalone_phpmyadmin ? 1 : 0
-  name               = "${var.tags.project}-${var.tags.environment}-phpmyadmin"
-  internal           = true
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.phpmyadmin_standalone_alb[0].id]
-  subnets            = try(module.vpc[0].private_subnets, var.existing_vpc_details.private_subnet_ids)
+  count                      = var.enable_standalone_phpmyadmin ? 1 : 0
+  drop_invalid_header_fields = true
+  name                       = "${var.tags.project}-${var.tags.environment}-phpmyadmin"
+  internal                   = true
+  load_balancer_type         = "application"
+  security_groups            = [aws_security_group.phpmyadmin_standalone_alb[0].id]
+  subnets                    = try(module.vpc[0].private_subnets, var.existing_vpc_details.private_subnet_ids)
 }
 
 resource "aws_lb_target_group" "phpmyadmin_standalone" {

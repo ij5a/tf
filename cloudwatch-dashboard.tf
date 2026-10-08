@@ -137,7 +137,7 @@ locals {
         period = 3600
       }
     }] : [],
-    var.enable_ecs ? [{
+    var.enable_ecs && local.container_insights != "disabled" ? [{
       type   = "metric"
       width  = 6
       height = 4

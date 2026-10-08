@@ -128,7 +128,7 @@ module "aurora_mysql_v2" {
   name                                          = substr(var.aurora_cluster_identifier_random_suffix ? "${var.tags.project}-${var.tags.environment}-${each.key}-${random_string.aurora_cluster_suffix[each.key].result}" : "${var.tags.project}-${var.tags.environment}-${each.key}", 0, 63)
   skip_final_snapshot                           = false
   storage_encrypted                             = true
-  storage_type                                  = "aurora"
+  storage_type                                  = var.aurora_storage_type
   enabled_cloudwatch_logs_exports               = local.is_prod ? ["audit", "error", "slowquery"] : []
   create_cloudwatch_log_group                   = local.is_prod
   cloudwatch_log_group_retention_in_days        = 90
@@ -155,7 +155,7 @@ module "aurora_mysql_v2" {
       },
       {
         name         = "binlog_format"
-        value        = "ROW"
+        value        = var.aurora_binlog_format
         apply_method = "pending-reboot"
       },
       {

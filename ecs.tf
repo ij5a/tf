@@ -643,7 +643,7 @@ module "phpmyadmin" {
   family                   = "${var.tags.project}-${var.tags.environment}-phpmyadmin"
   desired_count            = 1
   autoscaling_min_capacity = 1
-  autoscaling_max_capacity = 2
+  autoscaling_max_capacity = 1
   force_new_deployment     = true
   propagate_tags           = "SERVICE"
 
@@ -836,7 +836,7 @@ module "phpmyadmin" {
       schedule     = var.autoscaling_schedule.business_hours
       timezone     = var.autoscaling_schedule.timezone
       min_capacity = 1
-      max_capacity = 2
+      max_capacity = 1
     },
     off_hours = {
       schedule     = var.autoscaling_schedule.off_hours
@@ -849,7 +849,7 @@ module "phpmyadmin" {
         schedule     = var.autoscaling_schedule.business_hours
         timezone     = var.autoscaling_schedule.timezone
         min_capacity = 1
-        max_capacity = 2
+        max_capacity = 1
       },
       off_hours = {
         schedule     = var.autoscaling_schedule.off_hours

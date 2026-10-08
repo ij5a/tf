@@ -105,6 +105,7 @@ resource "aws_flow_log" "legacy_vpc" {
   count                    = var.enable_vpc_flow_logs && var.use_existing_vpc && var.manage_existing_vpc_flow_log ? 1 : 0
   vpc_id                   = var.existing_vpc_details.id
   traffic_type             = "ALL"
+  log_format               = "$${interface-id} $${srcaddr} $${dstaddr} $${srcport} $${dstport} $${protocol} $${start} $${end} $${action} $${log-status}"
   log_destination_type     = "s3"
   log_destination          = module.vpc_flow_logs_bucket[0].s3_bucket_arn
   max_aggregation_interval = 600
@@ -122,7 +123,7 @@ resource "aws_eip" "fck_nat" {
 }
 
 module "fck_nat" {
-  count                = var.enable_vpc && !var.use_existing_vpc && !local.is_prod ? 1 : 0
+  count                = var.enable_vpc && var.enable_fck_nat && !var.use_existing_vpc && !local.is_prod ? 1 : 0
   source               = var.module_sources.fck_nat.source
   version              = var.module_sources.fck_nat.version
   name                 = "${var.tags.project}-${var.tags.environment}-fck-nat"

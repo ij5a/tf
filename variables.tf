@@ -493,6 +493,12 @@ variable "enable_vpc" {
   default     = true
 }
 
+variable "enable_fck_nat" {
+  description = "Run the fck-nat egress instance in non-prod envs that own their VPC. The egress EIP stays when this is false."
+  type        = bool
+  default     = true
+}
+
 variable "enable_vpc_flow_logs" {
   description = "Enable VPC flow logs delivered to S3 (parquet, hive-compatible partitions, 600s aggregation). Creates a per-env S3 bucket with a 365-day lifecycle."
   type        = bool
@@ -687,6 +693,18 @@ variable "aurora_backup_retention_period" {
   description = "Days of automated Aurora backups to keep."
   type        = number
   default     = 7
+}
+
+variable "aurora_storage_type" {
+  description = "Aurora storage type: aurora (Standard) or aurora-iopt1 (I/O-Optimized)."
+  type        = string
+  default     = "aurora"
+}
+
+variable "aurora_binlog_format" {
+  description = "Aurora MySQL binlog_format. OFF lets an idle Serverless v2 writer auto-pause; a DMS CDC source needs ROW."
+  type        = string
+  default     = "ROW"
 }
 
 variable "pr_aurora_instance_count" {

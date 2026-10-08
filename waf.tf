@@ -11,7 +11,7 @@ locals {
   # priority-neutral for any env where iso8583 is off (count == enable_phpmyadmin ? 1 : 0).
   waf_protection_rule_count = (var.enable_phpmyadmin ? 1 : 0) + (var.enable_iso8583_playground ? 1 : 0)
 
-  # AWS Managed Rule groups applied in order; priority = waf_protection_rule_count + 3 + index.
+  # AWS Managed Rule groups applied in order; priority = waf_protection_rule_count + index.
   waf_managed_rule_groups = [
     { name = "aws-managed-rules-common", metric_name = "aws-managed-rules-common", managed_group = "AWSManagedRulesCommonRuleSet" },
     { name = "aws-managed-rules-sqli", metric_name = "aws-managed-rules-sqli", managed_group = "AWSManagedRulesSQLiRuleSet" },
@@ -236,7 +236,7 @@ resource "aws_wafv2_web_acl" "web_acl" {
 
   rule {
     name     = "general-rate-limit"
-    priority = local.waf_protection_rule_count + 2
+    priority = local.waf_protection_rule_count + 5
 
     action {
       block {}
@@ -258,7 +258,7 @@ resource "aws_wafv2_web_acl" "web_acl" {
 
   rule {
     name     = "ip-whitelist"
-    priority = local.waf_protection_rule_count
+    priority = local.waf_protection_rule_count + 3
 
     action {
       allow {}
@@ -280,7 +280,7 @@ resource "aws_wafv2_web_acl" "web_acl" {
   # allow Route 53 checker IPs only on the specific Fargate probe paths — not the whole site
   rule {
     name     = "route53-healthcheck-allow"
-    priority = local.waf_protection_rule_count + 1
+    priority = local.waf_protection_rule_count + 4
 
     action {
       allow {}
@@ -315,9 +315,10 @@ resource "aws_wafv2_web_acl" "web_acl" {
     }
   }
 
-  # AWS Managed Rules — OWASP/SQLi/Known-Bad-Inputs; block vs count controlled by waf_managed_rules_block_mode.
+  # Managed rules run before ip-whitelist so allowlisted traffic is inspected too.
+  # waf_managed_rules_block_mode picks block or count.
   dynamic "rule" {
-    for_each = { for idx, r in local.waf_managed_rule_groups : r.name => merge(r, { priority = local.waf_protection_rule_count + 3 + idx }) }
+    for_each = { for idx, r in local.waf_managed_rule_groups : r.name => merge(r, { priority = local.waf_protection_rule_count + idx }) }
     content {
       name     = rule.value.name
       priority = rule.value.priority
