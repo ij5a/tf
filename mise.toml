@@ -1,9 +1,9 @@
 # Pinned toolchain for local dev. Run `mise install` to get everything.
 [tools]
-opentofu          = "1.12.6"
+opentofu          = "1.13.1"
 tflint            = "0.64.0"
-trivy             = "0.74.0"
-awscli            = "2.37.4"
+trivy             = "0.75.0"
+awscli            = "2.37.11"
 "pipx:pre-commit" = "4.6.2"
 
 [env]

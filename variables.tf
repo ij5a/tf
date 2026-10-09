@@ -27,7 +27,7 @@ variable "module_sources" {
     }
     elasticache = {
       source  = "terraform-aws-modules/elasticache/aws"
-      version = "~> 1.11.1"
+      version = "~> 1.11.2"
     }
     fck_nat = {
       source  = "RaJiska/fck-nat/aws"
@@ -43,7 +43,7 @@ variable "module_sources" {
     }
     lambda = {
       source  = "terraform-aws-modules/lambda/aws"
-      version = "~> 8.9.0"
+      version = "~> 8.12.0"
     }
     notify_slack = {
       source  = "terraform-aws-modules/notify-slack/aws"
@@ -59,11 +59,11 @@ variable "module_sources" {
     }
     s3_bucket = {
       source  = "terraform-aws-modules/s3-bucket/aws"
-      version = "~> 5.16.1"
+      version = "~> 5.16.2"
     }
     secrets_manager = {
       source  = "terraform-aws-modules/secrets-manager/aws"
-      version = "~> 2.1.1"
+      version = "~> 2.2.0"
     }
     security_group = {
       source  = "terraform-aws-modules/security-group/aws"
