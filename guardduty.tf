@@ -14,6 +14,11 @@ resource "aws_guardduty_detector_feature" "this" {
   detector_id = aws_guardduty_detector.this[0].id
   name        = each.key
   status      = "ENABLED"
+
+  # AWS attaches RDS_DATA_RISK to RDS_LOGIN_EVENTS, and the provider rejects declaring it.
+  lifecycle {
+    ignore_changes = [additional_configuration]
+  }
 }
 
 # Note: Only one of EKS_RUNTIME_MONITORING or RUNTIME_MONITORING can be enabled.
