@@ -146,33 +146,3 @@ resource "aws_ssm_maintenance_window_task" "this" {
     }
   }
 }
-
-moved {
-  from = aws_ssm_maintenance_window.start[0]
-  to   = aws_ssm_maintenance_window.this["start"]
-}
-
-moved {
-  from = aws_ssm_maintenance_window.stop[0]
-  to   = aws_ssm_maintenance_window.this["stop"]
-}
-
-moved {
-  from = aws_ssm_maintenance_window_target.start[0]
-  to   = aws_ssm_maintenance_window_target.this["start"]
-}
-
-moved {
-  from = aws_ssm_maintenance_window_target.stop[0]
-  to   = aws_ssm_maintenance_window_target.this["stop"]
-}
-
-moved {
-  from = aws_ssm_maintenance_window_task.start[0]
-  to   = aws_ssm_maintenance_window_task.this["start"]
-}
-
-moved {
-  from = aws_ssm_maintenance_window_task.stop[0]
-  to   = aws_ssm_maintenance_window_task.this["stop"]
-}
