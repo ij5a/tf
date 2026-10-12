@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Vendored from terraform-aws-modules/notify-slack 7.5.1: no "Alarm reason" field, state-aware wording.
+# Vendored from notify-slack 7.5.1: no "Alarm reason" field, state-aware wording, CloudTrail cards, footers.
 # slack.tf points the module at this copy, so upstream fixes never land. Re-diff on any version bump.
 
 """
@@ -43,6 +43,7 @@ class AwsService(Enum):
     cloudwatch = "cloudwatch"
     guardduty = "guardduty"
     securityhub = "securityhub"
+    cloudtrail = "cloudtrailv2"
 
 
 def decrypt_url(encrypted_url: str) -> str:
@@ -315,6 +316,7 @@ class GuardDutyFindingSeverity(Enum):
     Low = "#777777"
     Medium = "warning"
     High = "danger"
+    Critical = "danger"
 
 
 def format_guardduty_finding(message: Dict[str, Any], region: str) -> Dict[str, Any]:
@@ -335,8 +337,10 @@ def format_guardduty_finding(message: Dict[str, Any], region: str) -> Dict[str, 
         severity = "Low"
     elif severity_score < 7.0:
         severity = "Medium"
-    else:
+    elif severity_score < 9.0:
         severity = "High"
+    else:
+        severity = "Critical"
 
     return {
         "color": GuardDutyFindingSeverity[severity].value,
@@ -581,6 +585,62 @@ def format_aws_backup(
     return attachments
 
 
+# One short sentence per event the security rule keeps.
+# A failed call keys as "<event> <result>", so it never reads as done.
+CLOUDTRAIL_DESCRIPTIONS = {
+    "Root": "The root user was used.",
+    "ConsoleLogin": "A user signed in without MFA.",
+    "ConsoleLogin Failure": "A console sign-in attempt failed.",
+    "CreateUser": "A new IAM user was created.",
+    "CreateAccessKey": "A new access key was created.",
+    "CreateLoginProfile": "A user got a console password.",
+    "UpdateLoginProfile": "A user's console password was changed.",
+    "DeactivateMFADevice": "MFA was turned off for a user.",
+    "AddUserToGroup": "A user was added to a group.",
+    "AttachUserPolicy": "A policy was attached to a user.",
+    "PutUserPolicy": "An inline policy was added to a user.",
+    "AttachGroupPolicy": "Admin access was given to a group.",
+    "AttachRolePolicy": "Admin access was given to a role.",
+    "DeleteTrail": "A CloudTrail trail was deleted.",
+    "StopLogging": "CloudTrail logging was stopped.",
+    "UpdateTrail": "A CloudTrail trail was changed.",
+    "PutEventSelectors": "CloudTrail event selection was changed.",
+    "StopConfigurationRecorder": "AWS Config recording was stopped.",
+    "DeleteConfigurationRecorder": "The AWS Config recorder was deleted.",
+    "DeleteDeliveryChannel": "The AWS Config delivery channel was deleted.",
+    "DeleteDetector": "GuardDuty was turned off in a region.",
+    "UpdateDetector": "GuardDuty was paused or its settings changed.",
+    "DisableKey": "A KMS key was disabled.",
+    "ScheduleKeyDeletion": "A KMS key was scheduled for deletion.",
+    "AuthorizeSecurityGroupIngress": "A security group was opened to the internet.",
+    "ModifySecurityGroupRules": "A security group rule now allows the internet.",
+    "CreateNetworkAclEntry": "A network ACL now allows the internet.",
+    "ReplaceNetworkAclEntry": "A network ACL now allows the internet.",
+}
+
+
+def format_cloudtrail_event(message: Dict[str, Any]) -> Dict[str, Any]:
+    """Format a CloudTrail security event from EventBridge into a Slack card"""
+
+    detail = message.get("detail") or {}
+    identity = detail.get("userIdentity") or {}
+    region = detail.get("awsRegion", message.get("region", ""))
+    user = identity.get("userName") or (identity.get("arn") or "").split(":")[-1] or identity.get("type", "unknown")
+    result = (detail.get("responseElements") or {}).get("ConsoleLogin") or detail.get("errorCode") or "Success"
+    title = detail.get("eventName", "unknown") + ("" if result == "Success" else f" {result}")
+    key = "Root" if identity.get("type") == "Root" and result == "Success" else title
+    description = CLOUDTRAIL_DESCRIPTIONS.get(key, "A sensitive API call was made.")
+    cloudtrail_url = get_service_url(region=region, service="cloudtrail")
+
+    return {
+        "color": "danger",
+        "fallback": f"{title}: {description}",
+        "title": f":rotating_light: {title}",
+        "title_link": f"{cloudtrail_url}#/events/{detail.get('eventID', '')}",
+        "text": f"{description}\n{user} from {detail.get('sourceIPAddress', 'unknown')} in {region}",
+    }
+
+
 def format_default(
     message: Union[str, Dict], subject: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -628,18 +688,23 @@ def parse_notification(
     :returns: Slack message payload
     """
     if "AlarmName" in message:
-        return format_cloudwatch_alarm(message=message, region=region)
+        return {**format_cloudwatch_alarm(message=message, region=region), "footer": "AWS CloudWatch"}
     if isinstance(message, Dict) and message.get("detail-type") == "GuardDuty Finding":
-        return format_guardduty_finding(message=message, region=message["region"])
+        return {**format_guardduty_finding(message=message, region=message["region"]), "footer": "Amazon GuardDuty"}
     if isinstance(message, Dict) and message.get("detail-type") == "GuardDuty Malware Protection Object Scan Result":
-        return format_guardduty_malware_protection_object_scan_result(message=message, region=message["region"])
+        return {
+            **format_guardduty_malware_protection_object_scan_result(message=message, region=message["region"]),
+            "footer": "Amazon GuardDuty",
+        }
     if isinstance(message, Dict) and message.get("detail-type") == "Security Hub Findings - Imported":
-        return format_aws_security_hub(message=message, region=message["region"])
+        return {**format_aws_security_hub(message=message, region=message["region"]), "footer": "AWS Security Hub"}
     if isinstance(message, Dict) and message.get("detail-type") == "AWS Health Event":
-        return format_aws_health(message=message, region=message["region"])
+        return {**format_aws_health(message=message, region=message["region"]), "footer": "AWS Health"}
+    if isinstance(message, Dict) and (message.get("detail-type") or "").endswith("via CloudTrail"):
+        return {**format_cloudtrail_event(message=message), "footer": "AWS CloudTrail"}
     if subject == "Notification from AWS Backup":
-        return format_aws_backup(message=str(message), message_attributes=message_attributes)
-    return format_default(message=message, subject=subject)
+        return {**format_aws_backup(message=str(message), message_attributes=message_attributes), "footer": "AWS Backup"}
+    return {**format_default(message=message, subject=subject), "footer": "AWS"}
 
 
 def get_slack_message_payload(
@@ -685,6 +750,7 @@ def get_slack_message_payload(
         )
 
     if attachment:
+        attachment["footer_icon"] = "https://a0.awsstatic.com/libra-css/images/logos/aws_logo_smile_1200x630.png"
         payload["attachments"] = [attachment]  # type: ignore
 
     return payload

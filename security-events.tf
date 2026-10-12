@@ -17,8 +17,11 @@ resource "aws_cloudwatch_event_rule" "security_events" {
   # Without this state, read-only management events skip the rule.
   state = "ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS"
 
+  # NOTE: IPv4 only, as no VPC here has IPv6. Add ::/0 if one does.
+  # Rule edits carry no direction, so an outbound edit to 0.0.0.0/0 alerts too.
   event_pattern = jsonencode({
     "$or" = [
+      { detail = { userIdentity = { type = ["Root"], invokedBy = [{ exists = false }] }, eventType = [{ "anything-but" = "AwsServiceEvent" }], readOnly = [false] } },
       { source = ["aws.signin"], detail = { responseElements = { ConsoleLogin = ["Failure"] } } },
       {
         source = ["aws.signin"]
@@ -28,27 +31,31 @@ resource "aws_cloudwatch_event_rule" "security_events" {
           responseElements    = { ConsoleLogin = ["Success"] }
         }
       },
-      { detail = { userIdentity = { type = ["Root"], invokedBy = [{ exists = false }] }, eventType = [{ "anything-but" = "AwsServiceEvent" }] } },
-      { detail = { errorCode = [{ suffix = "UnauthorizedOperation" }, { prefix = "AccessDenied" }], eventCategory = ["Management"] } },
-      { source = ["aws.iam"], detail = { eventName = [{ "anything-but" = { prefix = "List" } }], readOnly = [false] } },
-      { source = ["aws.cloudtrail"], detail = { eventName = ["CreateTrail", "UpdateTrail", "DeleteTrail", "StartLogging", "StopLogging", "PutEventSelectors"] } },
-      { source = ["aws.kms"], detail = { eventName = ["DisableKey", "ScheduleKeyDeletion"] } },
-      { source = ["aws.s3"], detail = { eventName = ["PutBucketAcl", "PutBucketPolicy", "PutBucketCors", "PutBucketLifecycle", "PutBucketReplication", "DeleteBucketPolicy", "DeleteBucketCors", "DeleteBucketLifecycle", "DeleteBucketReplication"] } },
-      { source = ["aws.config"], detail = { eventName = ["StopConfigurationRecorder", "DeleteDeliveryChannel", "PutDeliveryChannel", "PutConfigurationRecorder"] } },
+      { detail = { errorCode = [{ suffix = "UnauthorizedOperation" }, { prefix = "AccessDenied" }], eventCategory = ["Management"], readOnly = [false], userIdentity = { type = ["IAMUser"] } } },
       {
-        source = ["aws.ec2"]
+        source = ["aws.iam"]
         detail = {
           eventName = [
-            "AuthorizeSecurityGroupIngress", "AuthorizeSecurityGroupEgress", "RevokeSecurityGroupIngress", "RevokeSecurityGroupEgress",
-            "ModifySecurityGroupRules", "CreateSecurityGroup", "DeleteSecurityGroup", "CreateNetworkAcl", "CreateNetworkAclEntry",
-            "DeleteNetworkAcl", "DeleteNetworkAclEntry", "ReplaceNetworkAclEntry", "ReplaceNetworkAclAssociation", "CreateCustomerGateway",
-            "DeleteCustomerGateway", "AttachInternetGateway", "CreateInternetGateway", "DeleteInternetGateway", "DetachInternetGateway",
-            "CreateRoute", "CreateRouteTable", "ReplaceRoute", "ReplaceRouteTableAssociation", "DeleteRouteTable", "DeleteRoute",
-            "DisassociateRouteTable", "CreateVpc", "DeleteVpc", "ModifyVpcAttribute", "AcceptVpcPeeringConnection",
-            "CreateVpcPeeringConnection", "DeleteVpcPeeringConnection", "RejectVpcPeeringConnection",
+            "CreateUser", "CreateAccessKey", "CreateLoginProfile", "UpdateLoginProfile", "DeactivateMFADevice", "AddUserToGroup",
+            "AttachUserPolicy", "PutUserPolicy",
           ]
         }
       },
+      { source = ["aws.iam"], detail = { eventName = [{ prefix = "Attach" }], requestParameters = { policyArn = ["arn:aws:iam::aws:policy/AdministratorAccess"] } } },
+      { source = ["aws.cloudtrail"], detail = { eventName = ["DeleteTrail", "StopLogging", "UpdateTrail", "PutEventSelectors"] } },
+      { source = ["aws.config"], detail = { eventName = ["StopConfigurationRecorder", "DeleteConfigurationRecorder", "DeleteDeliveryChannel"] } },
+      { source = ["aws.guardduty"], detail = { eventName = ["DeleteDetector", "UpdateDetector"] } },
+      { source = ["aws.kms"], detail = { eventName = ["DisableKey", "ScheduleKeyDeletion"] } },
+      {
+        source = ["aws.ec2"]
+        detail = {
+          eventName         = ["AuthorizeSecurityGroupIngress"]
+          requestParameters = { ipPermissions = { items = { ipRanges = { items = { cidrIp = ["0.0.0.0/0"] } } } } }
+        }
+      },
+      { source = ["aws.ec2"], detail = { requestParameters = { ModifySecurityGroupRulesRequest = { SecurityGroupRule = { SecurityGroupRule = { CidrIpv4 = ["0.0.0.0/0"] } } } } } },
+      { source = ["aws.ec2"], detail = { requestParameters = { cidrBlock = ["0.0.0.0/0"], egress = [false], ruleAction = ["allow"] } } },
+      { source = ["aws.guardduty"], "detail-type" = ["GuardDuty Finding"], detail = { severity = [{ numeric = [">=", 7] }] } },
     ]
   })
 }
@@ -98,18 +105,6 @@ resource "aws_cloudwatch_event_target" "security_events_slack" {
   rule      = aws_cloudwatch_event_rule.security_events["us-east-1"].name
   target_id = "security-events-slack"
   arn       = module.notify_slack_alerts_us_east_1[0].slack_topic_arn
-
-  input_transformer {
-    input_paths = {
-      eventName = "$.detail.eventName"
-      who       = "$.detail.userIdentity.arn"
-      ip        = "$.detail.sourceIPAddress"
-      region    = "$.detail.awsRegion"
-      time      = "$.time"
-      error     = "$.detail.errorCode"
-    }
-    input_template = "{\"text\": \"Security event: <eventName> by <who> from <ip> in <region> at <time> <error>\"}"
-  }
 }
 
 # EventBridge needs this statement without a Condition block.
