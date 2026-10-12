@@ -323,6 +323,12 @@ variable "enable_guardduty" {
   default     = false
 }
 
+variable "enable_security_event_rules" {
+  description = "Enable EventBridge rules that send security events to Slack from all enabled regions"
+  type        = bool
+  default     = false
+}
+
 variable "enable_lambda" {
   description = "Enable Lambda functions"
   type        = bool
