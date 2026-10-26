@@ -636,7 +636,7 @@ variable "legacy_db_redis_server_details" {
 variable "phpmyadmin_image" {
   description = "Docker image for phpMyAdmin"
   type        = string
-  default     = "333333333333.dkr.ecr.sa-east-1.amazonaws.com/tools/phpmyadmin:5.2.2-apache"
+  default     = "333333333333.dkr.ecr.sa-east-1.amazonaws.com/tools/phpmyadmin:5.2.3-apache"
 }
 
 variable "iso8583_playground_image" {

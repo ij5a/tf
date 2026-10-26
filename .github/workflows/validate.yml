@@ -12,7 +12,7 @@ permissions:
   contents: read
 
 env:
-  TOFU_VERSION: "1.13.1"
+  TOFU_VERSION: "1.13.2"
 
 jobs:
   tofu:
@@ -47,7 +47,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: terraform-linters/setup-tflint@v4
         with:
-          tflint_version: v0.64.0
+          tflint_version: v0.65.0
       - run: tflint --init
       - run: tflint --recursive
 
