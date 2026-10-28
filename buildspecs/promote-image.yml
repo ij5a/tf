@@ -31,10 +31,13 @@ phases:
       - docker pull $${IMAGE_PROMOTION_SOURCE_ECR}:$${IMAGE_TAG}
       - docker tag $${IMAGE_PROMOTION_SOURCE_ECR}:$${IMAGE_TAG} $${IMAGE_PROMOTION_DESTINATION_ECR}:$${ENV_IMAGE_TAG}
       - docker tag $${IMAGE_PROMOTION_SOURCE_ECR}:$${IMAGE_TAG} $${IMAGE_PROMOTION_DESTINATION_ECR}:$${IMAGE_PROMOTION_DESTINATION_ENVIRONMENT}-$${SERVICE_REPOSITORY}-latest
+      # The EKS Helm chart pulls the unprefixed <svc>-<version> tag.
+      - case "$${BARE_VERSIONED_TAG}" in *-latest) ;; *) docker tag $${IMAGE_PROMOTION_SOURCE_ECR}:$${IMAGE_TAG} $${IMAGE_PROMOTION_DESTINATION_ECR}:$${BARE_VERSIONED_TAG} ;; esac
   post_build:
     commands:
       - echo "Logging in to ECR $${IMAGE_PROMOTION_DESTINATION_ENVIRONMENT}..."
       - aws ecr get-login-password --region $${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin $(echo $${IMAGE_PROMOTION_DESTINATION_ECR} | sed -E 's/\/.*$//g')
       - docker push $${IMAGE_PROMOTION_DESTINATION_ECR}:$${ENV_IMAGE_TAG}
       - docker push $${IMAGE_PROMOTION_DESTINATION_ECR}:$${IMAGE_PROMOTION_DESTINATION_ENVIRONMENT}-$${SERVICE_REPOSITORY}-latest
+      - case "$${BARE_VERSIONED_TAG}" in *-latest) ;; *) docker push $${IMAGE_PROMOTION_DESTINATION_ECR}:$${BARE_VERSIONED_TAG} ;; esac
       - echo "Image promotion completed successfully."
