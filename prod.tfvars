@@ -28,7 +28,6 @@ require_secure_transport = true
 # Observability.
 enable_cloudwatch_dashboard            = true
 cloudwatch_log_group_retention_in_days = 90
-enable_vpn_alarms                      = true
 
 # Aurora Serverless v2, 2 instances, sized for prod.
 aurora_instance_count = 2

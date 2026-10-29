@@ -1036,9 +1036,3 @@ variable "cloudwatch_route53_dashboard" {
   type        = map(string)
   default     = {}
 }
-
-variable "enable_vpn_alarms" {
-  description = "Create CloudWatch alarms for legacy out-of-band Site-to-Site VPN connections (active tunnel only)."
-  type        = bool
-  default     = false
-}

@@ -36,7 +36,7 @@ It covers four scenarios end to end:
   (`.github/workflows/validate.yml`).
 - **Security & alerts** — WAFv2 (`waf.tf`), GuardDuty (`guardduty.tf`),
   account hardening (`account-security.tf`), CloudWatch alarms + dashboards
-  (`cloudwatch*.tf`), VPN tunnel alarms (`cloudwatch-vpn.tf`), and SNS → Slack
+  (`cloudwatch*.tf`), and SNS → Slack
   notifications via small Go lambdas (`slack.tf`, `lambda.tf`).
 
 ## Architecture
@@ -115,7 +115,6 @@ flowchart LR
   subgraph obs["Monitoring & alerts"]
     r53hc["Route 53 health checks"] --> cw["CloudWatch alarms"]
     cw --> sns["SNS · notify-slack"]
-    vpn["VPN tunnel alarms"] --> sns
     sns --> nslam["notify-slack Lambda"]
     nslam --> slack(["Slack"])
     sns -. subscribe .-> pd(["PagerDuty"])
@@ -129,7 +128,7 @@ flowchart LR
   end
 ```
 
-An image push to ECR triggers the pipeline through EventBridge (non-dev waits on a manual approval); the SPA pipeline also invalidates CloudFront via a Lambda. CloudWatch alarms plus the VPN and Route 53 health checks fan out through SNS to a notify-slack Lambda and PagerDuty; GuardDuty findings and CodePipeline events post to Slack through their own small Go lambdas.
+An image push to ECR triggers the pipeline through EventBridge (non-dev waits on a manual approval); the SPA pipeline also invalidates CloudFront via a Lambda. CloudWatch alarms plus Route 53 health checks fan out through SNS to a notify-slack Lambda and PagerDuty; GuardDuty findings and CodePipeline events post to Slack through their own small Go lambdas.
 
 Region split: WAF, ACM, CloudFront, and one notify-slack/PagerDuty stack run in `us-east-1`; everything else in `sa-east-1`. Route 53 NS records are delegated from the master-payer account.
 
