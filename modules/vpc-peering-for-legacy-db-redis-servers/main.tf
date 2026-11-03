@@ -22,13 +22,13 @@ resource "aws_route" "new_to_old_vpc" {
 # ingress on legacy DB/Redis SGs permitting the new VPC CIDR
 locals {
   sg_rules = merge(
-    var.use_legacy_db ? {
+    var.use_legacy_db && var.legacy_db_redis_server_details.db.sg_id != "" ? {
       "db" = {
         port  = 3306
         sg_id = var.legacy_db_redis_server_details.db.sg_id
       }
     } : {},
-    var.use_legacy_redis ? {
+    var.use_legacy_redis && var.legacy_db_redis_server_details.redis.sg_id != "" ? {
       "redis" = {
         port  = 6379
         sg_id = var.legacy_db_redis_server_details.redis.sg_id
