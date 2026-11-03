@@ -96,6 +96,16 @@ resource "aws_cloudfront_response_headers_policy" "this" {
     }
   }
 
+  # NOTE: no-cache also makes browsers recheck the hashed dist/* files.
+  # Fix: a long max-age on dist/* only. The S3 deploy CacheControl also hits index.html.
+  custom_headers_config {
+    items {
+      header   = "Cache-Control"
+      override = false
+      value    = "no-cache"
+    }
+  }
+
   remove_headers_config {
     items {
       header = "X-Amz-Server-Side-Encryption"
@@ -309,7 +319,7 @@ module "cdn" {
 
 # Standalone phpMyAdmin front door. Separate from module.cdn (apigw): single default behavior to
 # the dedicated internal ALB, gated by its own CF-WAF. Interim - destroys when enable_standalone_phpmyadmin flips.
-# PriceClass_100 - interim internal tool gated to one Twingate IP, not the global client front door.
+# NOTE: PriceClass_100 - interim internal tool gated to one Twingate IP, not the global client front door.
 module "cdn_phpmyadmin" {
   source  = var.module_sources.cloudfront.source
   version = var.module_sources.cloudfront.version
@@ -351,7 +361,7 @@ module "cdn_phpmyadmin" {
     }
   }
 
-  # single default behavior to the ALB - no ordered behaviors, no SPA function, no second origin
+  # NOTE: single default behavior to the ALB - no ordered behaviors, no SPA function, no second origin
   default_cache_behavior = {
     allowed_methods            = ["GET", "HEAD", "OPTIONS", "PUT", "PATCH", "POST", "DELETE"]
     cache_policy_id            = data.aws_cloudfront_cache_policy.caching_disabled.id
