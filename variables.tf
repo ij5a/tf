@@ -15,7 +15,7 @@ variable "module_sources" {
     }
     cloudwatch = {
       source  = "terraform-aws-modules/cloudwatch/aws//modules/metric-alarm"
-      version = "~> 5.7.3"
+      version = "~> 6.0.0"
     }
     ecs_cluster = {
       source  = "terraform-aws-modules/ecs/aws//modules/cluster"
@@ -55,7 +55,7 @@ variable "module_sources" {
     }
     rds_aurora = {
       source  = "terraform-aws-modules/rds-aurora/aws"
-      version = "~> 10.4.1"
+      version = "~> 10.4.2"
     }
     s3_bucket = {
       source  = "terraform-aws-modules/s3-bucket/aws"
@@ -642,7 +642,7 @@ variable "phpmyadmin_image" {
 variable "iso8583_playground_image" {
   description = "Docker image for iso8583-playground"
   type        = string
-  default     = "333333333333.dkr.ecr.sa-east-1.amazonaws.com/tools/iso8583-playground:v0.1.6-20260915-00"
+  default     = "333333333333.dkr.ecr.sa-east-1.amazonaws.com/tools/iso8583-playground:v0.1.8-20261016-00"
 }
 
 variable "region" {
@@ -785,6 +785,18 @@ variable "service_repositories" {
     eg             = "acme-eg"
     pr             = "acme-saas"
     spa            = "spa"
+  }
+}
+
+# NOTE: ECR tags are mutable. Pin by digest if a version tag ever gets re-pushed.
+variable "image_tags" {
+  description = "Pinned image tag per service repository"
+  type        = map(string)
+  default     = {}
+
+  validation {
+    condition     = alltrue([for k in keys(var.image_tags) : contains(values(var.service_repositories), k)])
+    error_message = "Each image_tags key must be a repository name from service_repositories."
   }
 }
 

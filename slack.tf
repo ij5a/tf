@@ -170,6 +170,16 @@ module "codepipeline_slack" {
       actions   = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:DeleteItem"]
       resources = [aws_dynamodb_table.slack_messages[0].arn]
     }
+    ecs = {
+      effect    = "Allow"
+      actions   = ["ecs:DescribeServices"]
+      resources = ["arn:aws:ecs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:service/${var.tags.project}-${var.tags.environment}/*"]
+    }
+    ecs_task_definition = {
+      effect    = "Allow"
+      actions   = ["ecs:DescribeTaskDefinition"]
+      resources = ["*"]
+    }
   }
 
   environment_variables = {
@@ -185,7 +195,7 @@ module "codepipeline_slack" {
 }
 
 resource "aws_cloudwatch_event_rule" "codepipeline_state_change" {
-  count       = var.enable_slack_notifications && var.enable_deployment_notifications && var.enable_codepipeline ? 1 : 0
+  count       = var.enable_slack_notifications && var.enable_deployment_notifications && var.enable_codepipeline && length(local.pipeline_services) > 0 ? 1 : 0
   name        = "${var.tags.project}-${var.tags.environment}-codepipeline-state-change"
   description = "Capture CodePipeline execution state changes for Slack notification"
 
@@ -194,14 +204,14 @@ resource "aws_cloudwatch_event_rule" "codepipeline_state_change" {
     detail-type = ["CodePipeline Pipeline Execution State Change"]
     detail = {
       state    = ["STARTED", "FAILED", "CANCELED"]
-      pipeline = [for svc in var.services : "${var.tags.project}-${var.tags.environment}-${svc}"]
+      pipeline = [for svc in local.pipeline_services : "${var.tags.project}-${var.tags.environment}-${svc}"]
     }
   })
 }
 
 # separate Deploy-stage rule so we fire SUCCESS after deploy, not after downstream approval stages
 resource "aws_cloudwatch_event_rule" "codepipeline_deploy_stage" {
-  count       = var.enable_slack_notifications && var.enable_deployment_notifications && var.enable_codepipeline ? 1 : 0
+  count       = var.enable_slack_notifications && var.enable_deployment_notifications && var.enable_codepipeline && length(local.pipeline_services) > 0 ? 1 : 0
   name        = "${var.tags.project}-${var.tags.environment}-codepipeline-deploy-stage"
   description = "Capture Deploy stage completion for Slack notification"
 
@@ -211,27 +221,27 @@ resource "aws_cloudwatch_event_rule" "codepipeline_deploy_stage" {
     detail = {
       state    = ["SUCCEEDED", "FAILED"]
       stage    = ["Deploy", "CloudFrontInvalidation"]
-      pipeline = [for svc in var.services : "${var.tags.project}-${var.tags.environment}-${svc}"]
+      pipeline = [for svc in local.pipeline_services : "${var.tags.project}-${var.tags.environment}-${svc}"]
     }
   })
 }
 
 resource "aws_cloudwatch_event_target" "codepipeline_to_lambda" {
-  count     = var.enable_slack_notifications && var.enable_deployment_notifications && var.enable_codepipeline ? 1 : 0
+  count     = var.enable_slack_notifications && var.enable_deployment_notifications && var.enable_codepipeline && length(local.pipeline_services) > 0 ? 1 : 0
   rule      = aws_cloudwatch_event_rule.codepipeline_state_change[0].name
   target_id = "codepipeline-to-slack"
   arn       = module.codepipeline_slack[0].lambda_function_arn
 }
 
 resource "aws_cloudwatch_event_target" "codepipeline_deploy_to_lambda" {
-  count     = var.enable_slack_notifications && var.enable_deployment_notifications && var.enable_codepipeline ? 1 : 0
+  count     = var.enable_slack_notifications && var.enable_deployment_notifications && var.enable_codepipeline && length(local.pipeline_services) > 0 ? 1 : 0
   rule      = aws_cloudwatch_event_rule.codepipeline_deploy_stage[0].name
   target_id = "codepipeline-deploy-to-slack"
   arn       = module.codepipeline_slack[0].lambda_function_arn
 }
 
 resource "aws_lambda_permission" "codepipeline_eventbridge" {
-  count         = var.enable_slack_notifications && var.enable_deployment_notifications && var.enable_codepipeline ? 1 : 0
+  count         = var.enable_slack_notifications && var.enable_deployment_notifications && var.enable_codepipeline && length(local.pipeline_services) > 0 ? 1 : 0
   statement_id  = "AllowEventBridgeInvokePipeline"
   action        = "lambda:InvokeFunction"
   function_name = module.codepipeline_slack[0].lambda_function_name
@@ -240,10 +250,46 @@ resource "aws_lambda_permission" "codepipeline_eventbridge" {
 }
 
 resource "aws_lambda_permission" "codepipeline_deploy_eventbridge" {
-  count         = var.enable_slack_notifications && var.enable_deployment_notifications && var.enable_codepipeline ? 1 : 0
+  count         = var.enable_slack_notifications && var.enable_deployment_notifications && var.enable_codepipeline && length(local.pipeline_services) > 0 ? 1 : 0
   statement_id  = "AllowEventBridgeInvokeDeployStage"
   action        = "lambda:InvokeFunction"
   function_name = module.codepipeline_slack[0].lambda_function_name
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.codepipeline_deploy_stage[0].arn
+}
+
+# pinned ECS services deploy from tofu, so their deploy notices come from ECS events
+locals {
+  pinned_ecs_services = [for s in local.services : s if s != "spa" && contains(keys(var.image_tags), local.service_repositories[s])]
+}
+
+resource "aws_cloudwatch_event_rule" "ecs_deployment" {
+  count       = var.enable_slack_notifications && var.enable_deployment_notifications && var.enable_codepipeline && length(local.pinned_ecs_services) > 0 ? 1 : 0
+  name        = "${var.tags.project}-${var.tags.environment}-ecs-deployment"
+  description = "Capture ECS deployment results of pinned services for Slack notification"
+
+  event_pattern = jsonencode({
+    source      = ["aws.ecs"]
+    detail-type = ["ECS Deployment State Change"]
+    resources   = [for s in local.pinned_ecs_services : "arn:aws:ecs:${var.region}:${data.aws_caller_identity.current.account_id}:service/${var.tags.project}-${var.tags.environment}/${s}"]
+    detail = {
+      eventName = ["SERVICE_DEPLOYMENT_COMPLETED", "SERVICE_DEPLOYMENT_FAILED"]
+    }
+  })
+}
+
+resource "aws_cloudwatch_event_target" "ecs_deployment_to_lambda" {
+  count     = length(aws_cloudwatch_event_rule.ecs_deployment)
+  rule      = aws_cloudwatch_event_rule.ecs_deployment[0].name
+  target_id = "ecs-deployment-to-slack"
+  arn       = module.codepipeline_slack[0].lambda_function_arn
+}
+
+resource "aws_lambda_permission" "ecs_deployment_eventbridge" {
+  count         = length(aws_cloudwatch_event_rule.ecs_deployment)
+  statement_id  = "AllowEventBridgeInvokeEcsDeployment"
+  action        = "lambda:InvokeFunction"
+  function_name = module.codepipeline_slack[0].lambda_function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.ecs_deployment[0].arn
 }

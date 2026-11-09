@@ -81,6 +81,9 @@ locals {
   service_task_count   = merge(var.service_task_count, { for s in local.eg_extras : s => var.service_task_count["eg"] })
   service_repositories = merge(var.service_repositories, { for s in local.eg_extras : s => var.service_repositories["eg"] })
 
+  # Pinned tag when the repo has one in image_tags, otherwise the env-prefixed latest tag.
+  service_image_tags = { for s in local.services : s => lookup(var.image_tags, local.service_repositories[s], var.tags.environment == "dev" ? "${local.service_repositories[s]}-latest" : "${var.tags.environment}-${local.service_repositories[s]}-latest") }
+
   dotenv_services = [
     for service in local.services : service
     if service != "pr" && service != "authenticator" && service != "spa" && !strcontains(service, "apigw")
@@ -244,7 +247,7 @@ module "ecs_service" {
       cloudwatch_log_group_name              = "${var.tags.project}-${var.tags.environment}-${each.key}"
       cloudwatch_log_group_retention_in_days = var.cloudwatch_log_group_retention_in_days
       essential                              = true
-      image                                  = var.tags.environment == "dev" ? "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com/acme-platform-image:${local.service_repositories[each.key]}-latest" : "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com/acme-platform-image:${var.tags.environment}-${local.service_repositories[each.key]}-latest"
+      image                                  = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com/acme-platform-image:${local.service_image_tags[each.key]}"
       readonlyRootFilesystem                 = false
 
       environment = each.key != "pr" && each.key != "authenticator" && !strcontains(each.key, "apigw") ? concat(

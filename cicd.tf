@@ -231,6 +231,9 @@ data "aws_iam_policy_document" "codebuild" {
 }
 
 locals {
+  # tofu deploys pinned services itself, so only unpinned services keep a pipeline
+  pipeline_services = [for s in var.services : s if !contains(keys(var.image_tags), var.service_repositories[s])]
+
   # codepipeline's role is also assumed by EventBridge — the ECR-push rules trigger the pipeline through it
   cicd_assume_role_services = {
     codebuild    = ["codebuild.amazonaws.com"]
@@ -267,7 +270,7 @@ data "aws_ecr_repository" "this" {
 # CodePipeline + ECR source via OpenTofu doesn't auto-create the image-push event rule,
 # so we create the EventBridge rule + target manually to trigger the pipeline on new pushes.
 resource "aws_cloudwatch_event_rule" "ecr_image_push" {
-  for_each = var.enable_codepipeline ? toset(var.services) : toset([])
+  for_each = var.enable_codepipeline ? toset(local.pipeline_services) : toset([])
   name     = "${var.tags.project}-${var.tags.environment}-${each.key}-ecr-image-push"
   role_arn = aws_iam_role.this["codepipeline"].arn
 
@@ -285,14 +288,14 @@ resource "aws_cloudwatch_event_rule" "ecr_image_push" {
 }
 
 resource "aws_cloudwatch_event_target" "ecr_image_push" {
-  for_each = var.enable_codepipeline ? toset(var.services) : toset([])
+  for_each = var.enable_codepipeline ? toset(local.pipeline_services) : toset([])
   rule     = aws_cloudwatch_event_rule.ecr_image_push[each.key].name
   arn      = aws_codepipeline.this[each.key].arn
   role_arn = aws_iam_role.this["codepipeline"].arn
 }
 
 resource "aws_codebuild_project" "image_promotion" {
-  for_each     = var.enable_codepipeline && var.enable_codepipeline_image_promotion_step ? toset(var.services) : toset([])
+  for_each     = var.enable_codepipeline && var.enable_codepipeline_image_promotion_step ? toset(local.pipeline_services) : toset([])
   name         = "${var.tags.project}-${var.tags.environment}-${each.key}-image-promotion"
   service_role = aws_iam_role.this["codebuild"].arn
 
@@ -334,7 +337,7 @@ resource "aws_codebuild_project" "image_promotion" {
 }
 
 resource "aws_codebuild_project" "this" {
-  for_each     = var.enable_codepipeline ? toset(var.services) : toset([])
+  for_each     = var.enable_codepipeline ? toset(local.pipeline_services) : toset([])
   name         = "${var.tags.project}-${var.tags.environment}-${each.key}"
   service_role = aws_iam_role.this["codebuild"].arn
 
@@ -377,7 +380,7 @@ resource "aws_codebuild_project" "this" {
 }
 
 resource "aws_codepipeline" "this" {
-  for_each      = var.enable_codepipeline ? toset(var.services) : toset([])
+  for_each      = var.enable_codepipeline ? toset(local.pipeline_services) : toset([])
   name          = "${var.tags.project}-${var.tags.environment}-${each.key}"
   role_arn      = aws_iam_role.this["codepipeline"].arn
   pipeline_type = "V2"
@@ -505,6 +508,26 @@ resource "aws_codepipeline" "this" {
           ProjectName = aws_codebuild_project.image_promotion[each.key].name
         }
       }
+    }
+  }
+}
+
+# a pinned spa has no pipeline, so the apply copies its build to S3 when the pin changes
+resource "terraform_data" "spa_deploy" {
+  count            = var.enable_s3 && var.enable_cloudfront && contains(var.services, "spa") && contains(keys(var.image_tags), "spa") ? 1 : 0
+  triggers_replace = var.image_tags["spa"]
+
+  provisioner "local-exec" {
+    command = "scripts/deploy-spa.sh"
+
+    environment = {
+      PROFILE         = var.aws_profile
+      REGION          = var.region
+      REPOSITORY      = var.image_repository_name
+      IMAGE_TAG       = var.image_tags["spa"]
+      BUCKET          = module.s3_bucket["spa"].s3_bucket_id
+      DISTRIBUTION_ID = module.cdn["${var.tags.project}-${var.tags.environment}"].cloudfront_distribution_id
+      DRY_RUN         = ""
     }
   }
 }

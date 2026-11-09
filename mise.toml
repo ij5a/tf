@@ -1,6 +1,6 @@
 # Pinned toolchain for local dev. Run `mise install` to get everything.
 [tools]
-opentofu          = "1.13.2"
+opentofu          = "1.13.9"
 tflint            = "0.65.0"
 trivy             = "0.75.0"
 awscli            = "2.37.11"
