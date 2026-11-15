@@ -338,6 +338,29 @@ resource "aws_wafv2_web_acl" "web_acl" {
         managed_rule_group_statement {
           name        = rule.value.managed_group
           vendor_name = "AWS"
+
+          # phpMyAdmin request bodies trip these managed rules, so skip its path.
+          # phpmyadmin-ip-restriction already limits that path to Twingate.
+          dynamic "scope_down_statement" {
+            for_each = var.enable_phpmyadmin ? [1] : []
+            content {
+              not_statement {
+                statement {
+                  byte_match_statement {
+                    positional_constraint = "STARTS_WITH"
+                    search_string         = "/phpmyadmin/"
+                    field_to_match {
+                      uri_path {}
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "LOWERCASE"
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       }
 
