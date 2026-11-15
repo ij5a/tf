@@ -18,7 +18,7 @@ resource "aws_dms_endpoint" "target" {
   endpoint_id   = "${var.tags.project}-${var.tags.environment}-target"
   endpoint_type = "target"
 
-  server_name   = try(module.aurora_mysql_v2["central"].cluster_endpoint, var.dms_migration_details.target_db_endpoint)
+  server_name   = try(module.aurora_mysql_v2[var.dms_migration_details.target_cluster_key].cluster_endpoint, var.dms_migration_details.target_db_endpoint)
   port          = 3306
   database_name = var.dms_migration_details.target_db_name
   username      = var.dms_target_db_username
@@ -58,7 +58,7 @@ resource "aws_iam_role_policy" "dms_secrets_manager_policy" {
           "secretsmanager:GetSecretValue",
           "secretsmanager:DescribeSecret"
         ]
-        Resource = module.aurora_mysql_v2["central"].cluster_master_user_secret[0].secret_arn
+        Resource = module.aurora_mysql_v2[var.dms_migration_details.target_cluster_key].cluster_master_user_secret[0].secret_arn
       }
     ]
   })
@@ -92,7 +92,7 @@ module "security_group" {
         to_port                      = 3306
         ip_protocol                  = "tcp"
         description                  = "MySQL DB access to the target database using port 3306"
-        referenced_security_group_id = try(module.aurora_mysql_v2["central"].security_group_id, var.dms_migration_details.target_db_security_group_id)
+        referenced_security_group_id = try(module.aurora_mysql_v2[var.dms_migration_details.target_cluster_key].security_group_id, var.dms_migration_details.target_db_security_group_id)
       }
     },
     var.use_legacy_db ? {} : {
@@ -136,7 +136,7 @@ resource "aws_security_group_rule" "dms_target_db_access" {
   to_port                  = 3306
   protocol                 = "tcp"
   description              = "Allow DMS access to target database"
-  security_group_id        = try(module.aurora_mysql_v2["central"].security_group_id, var.dms_migration_details.target_db_security_group_id)
+  security_group_id        = try(module.aurora_mysql_v2[var.dms_migration_details.target_cluster_key].security_group_id, var.dms_migration_details.target_db_security_group_id)
   source_security_group_id = module.security_group[0].id
 }
 
@@ -175,6 +175,13 @@ resource "aws_dms_replication_config" "serverless" {
     aws_security_group_rule.dms_source_db_access,
     aws_security_group_rule.dms_target_db_access
   ]
+
+  lifecycle {
+    precondition {
+      condition     = !startswith(lower(split(".", aws_dms_endpoint.source[0].server_name)[0]), lower(split(".", aws_dms_endpoint.target[0].server_name)[0]))
+      error_message = "DMS source and target are the same cluster, and TRUNCATE_BEFORE_LOAD would empty the source tables."
+    }
+  }
 }
 
 resource "aws_dms_replication_subnet_group" "dms_subnet_group" {

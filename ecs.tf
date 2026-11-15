@@ -607,6 +607,14 @@ locals {
       ssl_verify = "0"
       ssl_ca     = ""
     }] : [],
+    var.enable_central_v2_serverless_aurora ? [{
+      host       = module.aurora_mysql_v2["central-v2"].cluster_endpoint
+      port       = tostring(module.aurora_mysql_v2["central-v2"].cluster_port)
+      verbose    = module.aurora_mysql_v2["central-v2"].cluster_id
+      ssl        = "0"
+      ssl_verify = "0"
+      ssl_ca     = ""
+    }] : [],
     var.enable_pr_serverless_aurora && contains(var.services, "pr") ? [{
       host       = try(module.aurora_mysql_v2["pr"].cluster_endpoint, "")
       port       = try(tostring(module.aurora_mysql_v2["pr"].cluster_port), "3306")

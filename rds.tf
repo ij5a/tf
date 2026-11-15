@@ -7,12 +7,13 @@ data "aws_rds_engine_version" "mysql" {
   version = "8.0.mysql_aurora.3.10.3"
 }
 
-# Aurora clusters keyed by service: central (enable_serverless_aurora), plus an optional
-# dedicated pr cluster (enable_pr_serverless_aurora) so pr load/scaling stay off central.
+# Aurora clusters by key: central, an optional pr cluster that keeps pr load off central,
+# and an optional central-v2 cluster that DMS fills from central.
 locals {
   aurora_cluster_keys = toset(concat(
     var.enable_serverless_aurora ? [for service in var.services : service if service == "central"] : [],
     var.enable_pr_serverless_aurora ? [for service in var.services : service if service == "pr"] : [],
+    var.enable_central_v2_serverless_aurora ? ["central-v2"] : [],
   ))
 }
 
@@ -212,9 +213,18 @@ module "aurora_mysql_v2" {
   # Every instance gets the env's promotion tier when set: Aurora consults the tier on readers
   # only (writers ignore it), and map keys don't track live roles after a failover.
   instances = {
-    for i in range(1, (each.key == "pr" ? var.pr_aurora_instance_count : var.aurora_instance_count) + 1) :
+    for i in range(1, (each.key == "pr" ? var.pr_aurora_instance_count : each.key == "central-v2" ? 1 : var.aurora_instance_count) + 1) :
     i => var.aurora_reader_promotion_tier != null ? { promotion_tier = var.aurora_reader_promotion_tier } : {}
   }
+}
+
+# AWS turns on 7-day rotation for rds! secrets, which breaks the static DMS copy of the password.
+# Aurora re-arms a cancel made before its instances are up, so this waits for the whole module.
+resource "aws_secretsmanager_secret_rotation" "aurora_central_v2" {
+  count            = var.enable_central_v2_serverless_aurora ? 1 : 0
+  secret_id        = module.aurora_mysql_v2["central-v2"].cluster_master_user_secret[0].secret_arn
+  rotation_enabled = false
+  depends_on       = [module.aurora_mysql_v2]
 }
 
 module "rds_scheduler" {

@@ -109,6 +109,7 @@ variable "dms_migration_details" {
     target_db_endpoint          = optional(string, "target-db.example.com")
     target_db_name              = optional(string, "target_database")
     target_db_security_group_id = optional(string, "sg-bar")
+    target_cluster_key          = optional(string, "central")
     migration_type              = optional(string, "full-load-and-cdc")
     table_mappings = optional(string, <<-EOF
     {
@@ -397,6 +398,12 @@ variable "enable_de_mysql_rds" {
 
 variable "enable_pr_serverless_aurora" {
   description = "Create a dedicated Aurora Serverless v2 cluster for the pr (processor-router) service, separate from the shared central cluster. Requires 'pr' to be in var.services. pr.json keeps pointing at central until its host/user/password are updated by hand after the cluster exists."
+  type        = bool
+  default     = false
+}
+
+variable "enable_central_v2_serverless_aurora" {
+  description = "Create a second central Aurora cluster under the key central-v2, with 1 instance. Used as a DMS target."
   type        = bool
   default     = false
 }

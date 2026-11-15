@@ -61,6 +61,7 @@ module "high_usage_alarm" {
   }
 }
 
+# NOTE: the DMS target cluster has no alarms. Drop this filter if it gets them.
 module "database_alarm" {
   for_each = var.enable_database_alarms && local.is_prod ? {
     for pair in setproduct(keys(module.aurora_mysql_v2), keys(local.database_alarm_metrics)) :
@@ -70,7 +71,7 @@ module "database_alarm" {
         cluster_id = module.aurora_mysql_v2[pair[0]].cluster_id
         dimensions = lookup(local.database_alarm_metrics[pair[1]], "dimensions", {})
       }
-    )
+    ) if pair[0] != "central-v2"
   } : {}
 
   source              = var.module_sources.cloudwatch.source
