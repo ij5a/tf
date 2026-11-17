@@ -47,7 +47,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: terraform-linters/setup-tflint@v4
         with:
-          tflint_version: v0.65.0
+          tflint_version: v0.66.0
       - run: tflint --init
       - run: tflint --recursive
 
