@@ -12,7 +12,7 @@ locals {
   ]
   log_query_sources = join(" | ", [for lg in local.log_group_names : "SOURCE '${lg}'"])
 
-  aurora_cluster_id    = try(module.aurora_mysql_v2["central"].cluster_id, null)
+  aurora_cluster_id    = try(module.aurora_mysql_v2[var.enable_central_v2_serverless_aurora ? "central-v2" : "central"].cluster_id, null)
   de_mysql_db_id       = try(module.de_mysql_rds[0].db_instance_identifier, null)
   cf_distribution_id   = try(module.cdn[local.dashboard_key].cloudfront_distribution_id, null)
   alb_arn_suffix       = try(module.alb[local.dashboard_key].arn_suffix, null)

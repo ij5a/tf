@@ -8,10 +8,10 @@ data "aws_rds_engine_version" "mysql" {
 }
 
 # Aurora clusters by key: central, an optional pr cluster that keeps pr load off central,
-# and an optional central-v2 cluster that DMS fills from central.
+# and an optional central-v2 cluster that replaces central.
 locals {
   aurora_cluster_keys = toset(concat(
-    var.enable_serverless_aurora ? [for service in var.services : service if service == "central"] : [],
+    var.enable_serverless_aurora && !var.enable_central_v2_serverless_aurora ? [for service in var.services : service if service == "central"] : [],
     var.enable_pr_serverless_aurora ? [for service in var.services : service if service == "pr"] : [],
     var.enable_central_v2_serverless_aurora ? ["central-v2"] : [],
   ))
@@ -213,7 +213,7 @@ module "aurora_mysql_v2" {
   # Every instance gets the env's promotion tier when set: Aurora consults the tier on readers
   # only (writers ignore it), and map keys don't track live roles after a failover.
   instances = {
-    for i in range(1, (each.key == "pr" ? var.pr_aurora_instance_count : each.key == "central-v2" ? 1 : var.aurora_instance_count) + 1) :
+    for i in range(1, (each.key == "pr" ? var.pr_aurora_instance_count : var.aurora_instance_count) + 1) :
     i => var.aurora_reader_promotion_tier != null ? { promotion_tier = var.aurora_reader_promotion_tier } : {}
   }
 }

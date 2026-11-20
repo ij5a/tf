@@ -403,7 +403,7 @@ variable "enable_pr_serverless_aurora" {
 }
 
 variable "enable_central_v2_serverless_aurora" {
-  description = "Create a second central Aurora cluster under the key central-v2, with 1 instance. Used as a DMS target."
+  description = "Use a central-v2 Aurora cluster in place of central. Turning it on destroys the central cluster."
   type        = bool
   default     = false
 }

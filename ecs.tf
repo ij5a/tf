@@ -591,15 +591,15 @@ module "ecs_service" {
 # (CA fetched by the container entrypoint).
 locals {
   pma_servers = concat(
-    [{
+    !var.enable_central_v2_serverless_aurora ? [{
       host       = module.aurora_mysql_v2["central"].cluster_endpoint
       port       = tostring(module.aurora_mysql_v2["central"].cluster_port)
       verbose    = module.aurora_mysql_v2["central"].cluster_id
       ssl        = "0"
       ssl_verify = "0"
       ssl_ca     = ""
-    }],
-    var.aurora_instance_count > 1 ? [{
+    }] : [],
+    !var.enable_central_v2_serverless_aurora && var.aurora_instance_count > 1 ? [{
       host       = module.aurora_mysql_v2["central"].cluster_reader_endpoint
       port       = tostring(module.aurora_mysql_v2["central"].cluster_port)
       verbose    = "${module.aurora_mysql_v2["central"].cluster_id}-ro"
@@ -611,6 +611,14 @@ locals {
       host       = module.aurora_mysql_v2["central-v2"].cluster_endpoint
       port       = tostring(module.aurora_mysql_v2["central-v2"].cluster_port)
       verbose    = module.aurora_mysql_v2["central-v2"].cluster_id
+      ssl        = "0"
+      ssl_verify = "0"
+      ssl_ca     = ""
+    }] : [],
+    var.enable_central_v2_serverless_aurora && var.aurora_instance_count > 1 ? [{
+      host       = module.aurora_mysql_v2["central-v2"].cluster_reader_endpoint
+      port       = tostring(module.aurora_mysql_v2["central-v2"].cluster_port)
+      verbose    = "${module.aurora_mysql_v2["central-v2"].cluster_id}-ro"
       ssl        = "0"
       ssl_verify = "0"
       ssl_ca     = ""
@@ -668,7 +676,7 @@ module "phpmyadmin" {
         "secretsmanager:GetSecretValue"
       ]
       resources = [
-        module.aurora_mysql_v2["central"].cluster_master_user_secret[0]["secret_arn"]
+        module.aurora_mysql_v2[var.enable_central_v2_serverless_aurora ? "central-v2" : "central"].cluster_master_user_secret[0]["secret_arn"]
       ]
     },
   ])
@@ -742,7 +750,7 @@ module "phpmyadmin" {
       secrets = [
         {
           name      = "MYSQL_ROOT_PASSWORD"
-          valueFrom = "${module.aurora_mysql_v2["central"].cluster_master_user_secret[0]["secret_arn"]}:password::"
+          valueFrom = "${module.aurora_mysql_v2[var.enable_central_v2_serverless_aurora ? "central-v2" : "central"].cluster_master_user_secret[0]["secret_arn"]}:password::"
         }
       ]
 
