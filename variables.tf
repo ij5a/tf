@@ -643,7 +643,7 @@ variable "legacy_db_redis_server_details" {
 variable "phpmyadmin_image" {
   description = "Docker image for phpMyAdmin"
   type        = string
-  default     = "333333333333.dkr.ecr.sa-east-1.amazonaws.com/tools/phpmyadmin:5.2.3-apache"
+  default     = "333333333333.dkr.ecr.sa-east-1.amazonaws.com/tools/phpmyadmin:5.2.3-apache-20261125"
 }
 
 variable "iso8583_playground_image" {
@@ -993,7 +993,7 @@ variable "enable_gateway_deep_echo" {
 variable "tls_proxy_image" {
   description = "Docker image for the TLS-terminating nginx sidecar"
   type        = string
-  default     = "333333333333.dkr.ecr.sa-east-1.amazonaws.com/tools/nginx:1.30.4-alpine"
+  default     = "333333333333.dkr.ecr.sa-east-1.amazonaws.com/tools/nginx:1.30.8-alpine-slim"
 }
 
 variable "use_private_nlb_for_eg" {
